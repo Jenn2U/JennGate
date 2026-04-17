@@ -1,10 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/Jenn2U/JennGate/internal/config"
 	"github.com/Jenn2U/JennGate/internal/db"
+	"github.com/Jenn2U/JennGate/internal/migrations"
 )
 
 func main() {
@@ -26,4 +28,14 @@ func main() {
 	}()
 
 	log.Println("Database initialized successfully")
+
+	// Run pending migrations
+	connString := "postgresql://" + cfg.DBUser + ":" + cfg.DBPassword + "@" +
+		cfg.DBHost + ":" + fmt.Sprint(cfg.DBPort) + "/" + cfg.DBName +
+		"?sslmode=" + cfg.SSLMode
+	if err := migrations.RunMigrations(connString); err != nil {
+		log.Fatal("Failed to run migrations:", err)
+	}
+
+	log.Println("Migrations completed successfully")
 }

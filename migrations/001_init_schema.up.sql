@@ -18,6 +18,7 @@ CREATE INDEX idx_devices_state ON devices(state);
 -- Create gate_sessions table
 CREATE TABLE gate_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    -- user_id references Jenn Production users table (external, not local FK)
     user_id UUID NOT NULL,
     device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
     state TEXT NOT NULL,
@@ -40,6 +41,7 @@ CREATE INDEX idx_gate_sessions_state ON gate_sessions(state);
 CREATE TABLE gate_recordings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id UUID NOT NULL REFERENCES gate_sessions(id) ON DELETE CASCADE,
+    -- user_id references Jenn Production users table (external, not local FK)
     user_id UUID NOT NULL,
     device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
     file_path TEXT NOT NULL,

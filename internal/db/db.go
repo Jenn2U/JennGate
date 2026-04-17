@@ -1,8 +1,10 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	_ "github.com/lib/pq"
 
@@ -13,14 +15,15 @@ import (
 // It builds the connection string, opens the connection, validates it, and
 // configures connection pool parameters.
 func InitDB(cfg *config.Config) (*sql.DB, error) {
-	// Build PostgreSQL connection string
+	// Build PostgreSQL connection string with SSL and connection timeout
 	connString := fmt.Sprintf(
-		"postgresql://%s:%s@%s:%d/%s?sslmode=disable",
+		"postgresql://%s:%s@%s:%d/%s?sslmode=%s&connect_timeout=10",
 		cfg.DBUser,
 		cfg.DBPassword,
 		cfg.DBHost,
 		cfg.DBPort,
 		cfg.DBName,
+		cfg.SSLMode,
 	)
 
 	// Open database connection
@@ -29,8 +32,11 @@ func InitDB(cfg *config.Config) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Validate connection
-	if err := db.Ping(); err != nil {
+	// Validate connection with a 10-second timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 

@@ -13,6 +13,7 @@ type Config struct {
 	DBName     string
 	DBUser     string
 	DBPassword string
+	SSLMode    string
 	HTTPPort   int
 	LogLevel   string
 }
@@ -24,6 +25,7 @@ func Load() (*Config, error) {
 		DBHost:   getEnvOrDefault("JENNGATE_DB_HOST", "localhost"),
 		DBName:   getEnvOrDefault("JENNGATE_DB_NAME", "jenngate"),
 		DBUser:   getEnvOrDefault("JENNGATE_DB_USER", "jenngate"),
+		SSLMode:  getEnvOrDefault("JENNGATE_DB_SSLMODE", "require"),
 		HTTPPort: 8081,
 		LogLevel: getEnvOrDefault("JENNGATE_LOG_LEVEL", "info"),
 	}
@@ -71,11 +73,12 @@ func getEnvOrDefault(key, defaultValue string) string {
 // String returns a readable summary of the Config with the password masked.
 func (c *Config) String() string {
 	return fmt.Sprintf(
-		"Config{DBHost:%s DBPort:%d DBName:%s DBUser:%s DBPassword:*** HTTPPort:%d LogLevel:%s}",
+		"Config{DBHost:%s DBPort:%d DBName:%s DBUser:%s SSLMode:%s DBPassword:*** HTTPPort:%d LogLevel:%s}",
 		c.DBHost,
 		c.DBPort,
 		c.DBName,
 		c.DBUser,
+		c.SSLMode,
 		c.HTTPPort,
 		c.LogLevel,
 	)
