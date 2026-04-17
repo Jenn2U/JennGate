@@ -41,7 +41,7 @@ CREATE TABLE gate_recordings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id UUID NOT NULL REFERENCES gate_sessions(id) ON DELETE CASCADE,
     user_id UUID NOT NULL,
-    device_id UUID NOT NULL,
+    device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
     file_path TEXT NOT NULL,
     timing_path TEXT,
     byte_size INTEGER,
