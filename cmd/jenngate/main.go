@@ -7,6 +7,7 @@ import (
 	"github.com/Jenn2U/JennGate/internal/config"
 	"github.com/Jenn2U/JennGate/internal/db"
 	"github.com/Jenn2U/JennGate/internal/migrations"
+	"github.com/Jenn2U/JennGate/internal/services"
 )
 
 func main() {
@@ -38,4 +39,19 @@ func main() {
 	}
 
 	log.Println("Migrations completed successfully")
+
+	// Initialize services
+	// TODO: Initialize sessions and recordings services
+	caService, err := services.NewCAService(database)
+	if err != nil {
+		log.Fatal("Failed to initialize CA service:", err)
+	}
+	log.Println("CA service initialized successfully")
+
+	// Verify CA public key is available
+	pubKey := caService.GetPublicKey()
+	if len(pubKey) == 0 {
+		log.Fatal("CA public key is not available")
+	}
+	log.Printf("CA service ready with public key (%d bytes)", len(pubKey))
 }
