@@ -67,6 +67,9 @@ func (h *Handlers) RegisterRoutes(router *gin.Engine) {
 		daemon.POST("/sessions/:session_id/start", h.ReportSessionStart)
 		daemon.POST("/sessions/:session_id/end", h.ReportSessionEnd)
 	}
+
+	// WebSocket terminal bridge
+	router.GET("/ws/gate/:session_id", h.TerminalBridge)
 }
 
 // ============================================================================
