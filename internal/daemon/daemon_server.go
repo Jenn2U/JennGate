@@ -40,8 +40,8 @@ func StartDaemonServer(port int, daemonServer *DaemonServer) error {
 	}
 
 	server := grpc.NewServer(
-		// TODO: Add mTLS credentials (Phase 3b)
-		// TODO: Add authentication interceptor (Phase 3b)
+	// TODO: Add mTLS credentials (Phase 3b)
+	// TODO: Add authentication interceptor (Phase 3b)
 	)
 
 	// Register daemon service
@@ -188,6 +188,84 @@ func (ds *DaemonServer) NotifyDaemonSessionTermination(
 	log.Printf("NotifyDaemonSessionTermination: deviceID=%s sessionID=%s", deviceID, sessionID)
 	// TODO: Send termination signal to daemon (Phase 3b)
 	return nil
+}
+
+// NotifyGUISessionStart is called by daemon when a VNC/X11 server is ready.
+// Typically called after RegisterDaemon and during an ACTIVE session when the user
+// opens a GUI connection.
+// The daemon reports the session_id, protocol type (vnc or x11), and the port.
+// JennGate records the GUI session metadata for tracking and display.
+//
+// Phase 3b: Full implementation with GUI session metadata storage.
+func (ds *DaemonServer) NotifyGUISessionStart(
+	ctx context.Context,
+	sessionID string,
+	protocol string,
+	port int,
+) error {
+	log.Printf("NotifyGUISessionStart: sessionID=%s protocol=%s port=%d", sessionID, protocol, port)
+
+	// Determine port allocation based on protocol type.
+	// For VNC, port is vnc_port; for X11, port is x11_display_port.
+	// Pass 0 for the unused port to keep it NULL in the database.
+	var vncPort, x11DisplayPort int
+	if protocol == "vnc" {
+		vncPort = port
+		x11DisplayPort = 0
+	} else if protocol == "x11" {
+		vncPort = 0
+		x11DisplayPort = port
+	} else {
+		log.Printf("Unknown GUI protocol: %s", protocol)
+		return fmt.Errorf("unsupported GUI protocol: %s", protocol)
+	}
+
+	// Call SessionService to update GUI status
+	err := ds.sessionService.UpdateSessionGUIStatus(ctx, sessionID, protocol, vncPort, x11DisplayPort)
+	if err != nil {
+		log.Printf("Failed to update GUI status: %v", err)
+		return err
+	}
+
+	// Log audit event
+	ds.logAuditEvent("gui_session_started", sessionID, map[string]interface{}{
+		"protocol": protocol,
+		"port":     port,
+	})
+
+	return nil
+}
+
+// NotifyGUISessionEnd is called by daemon when a VNC/X11 session closes.
+// The daemon reports the session_id and reason for disconnection (optional).
+// JennGate clears the GUI session metadata and records the end time.
+//
+// Phase 3b: Full implementation with GUI session cleanup.
+func (ds *DaemonServer) NotifyGUISessionEnd(
+	ctx context.Context,
+	sessionID string,
+) error {
+	log.Printf("NotifyGUISessionEnd: sessionID=%s", sessionID)
+
+	err := ds.sessionService.EndGUISession(ctx, sessionID)
+	if err != nil {
+		log.Printf("Failed to end GUI session: %v", err)
+		return err
+	}
+
+	// Log audit event
+	ds.logAuditEvent("gui_session_ended", sessionID, map[string]interface{}{})
+
+	return nil
+}
+
+// logAuditEvent logs an event to the audit log.
+// Phase 3a: Stub that logs to stdout
+// Phase 3b: Full implementation with structured audit logging to database
+func (ds *DaemonServer) logAuditEvent(eventType, resourceID string, details map[string]interface{}) {
+	log.Printf("AUDIT: %s | resource=%s | details=%v", eventType, resourceID, details)
+	// TODO: Store audit event in database (Phase 3b)
+	// TODO: Integrate with observability system (Phase 3b)
 }
 
 // ===================================================================
