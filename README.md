@@ -14,6 +14,31 @@ JennGate is a standalone Go service that manages SSH certificate issuance, sessi
 - **gRPC Daemon Interface**: Device communication (registration, policy sync, session reporting)
 - **Audit Logging**: Comprehensive audit trail of all state changes
 
+## GUI Access (VNC + X11)
+
+Phase 3b extends JennGate with dual-protocol GUI access:
+
+### SSH Terminal (Phase 3a)
+- Text-based access via WebSocket terminal
+- Recorded via `script(1)` typescript format
+
+### VNC (Headless)
+- Requires `enable_gui: true` in certificate request
+- Accessed via SSH port forwarding
+- Available on JennEdge and JennDock daemons
+- No recording (real-time access only)
+
+### X11 Forwarding (Workstations)
+- Requires `enable_gui: true` and JennEdge daemon
+- Accessed via SSH -X forwarding
+- Optional Xvfb virtual display
+- No recording (real-time access only)
+
+### Feature Flag
+- Set `enable_gui: true` in cert request
+- Requires `gate.gui.access` permission
+- Defaults to `false` (backward compatible)
+
 ## Architecture
 
 ```
@@ -81,8 +106,8 @@ docker-compose exec jenngate go test ./internal/services -v
 
 1. **Build Docker Image**
    ```bash
-   docker build -t jenn2u/jenngate:v3.0.0 .
-   docker push jenn2u/jenngate:v3.0.0
+   docker build -t jenn2u/jenngate:v3.1.0 .
+   docker push jenn2u/jenngate:v3.1.0
    ```
 
 2. **Deploy to Production Host** (10.10.50.155)
@@ -90,7 +115,7 @@ docker-compose exec jenngate go test ./internal/services -v
    ssh root@10.10.50.155
    
    # Pull and run with Docker Compose
-   docker pull jenn2u/jenngate:v3.0.0
+   docker pull jenn2u/jenngate:v3.1.0
    docker run -d \
      --name jenngate \
      --restart=always \
@@ -99,7 +124,7 @@ docker-compose exec jenngate go test ./internal/services -v
      -e JENNGATE_DB_PASSWORD=$DB_PASSWORD \
      -e JENNGATE_DB_HOST=postgres.local \
      -e JENNGATE_DB_SSLMODE=require \
-     jenn2u/jenngate:v3.0.0
+     jenn2u/jenngate:v3.1.0
    ```
 
 3. **Verify Deployment**
@@ -209,22 +234,25 @@ go test ./tests/integration -v
 
 ## Phase Roadmap
 
-### Phase 3a (Current): UI Migration & Core Infrastructure
+### Phase 3a: UI Migration & Core Infrastructure
 - ✅ REST API (11 endpoints)
 - ✅ WebSocket terminal (echo stub)
 - ✅ gRPC daemon interface (stubs)
 - ✅ Certificate issuance
 - ✅ Session state machine
 - ✅ Recording infrastructure
-- TODO: Full integration testing
 
-### Phase 3b: Full SSH & Policy Integration
-- TODO: SSH daemon connection (replace echo mode)
-- TODO: Policy sync CRDT
-- TODO: Full gRPC implementation with protobuf
-- TODO: JWT authentication & authorization
-- TODO: Orphan detection job
-- TODO: Performance optimization
+### Phase 3b (Current): Full SSH & Dual-Protocol GUI
+- ✅ SSH daemon connection (full SSH, replaced echo mode)
+- ✅ Policy sync CRDT
+- ✅ Full gRPC implementation with protobuf
+- ✅ JWT authentication & authorization
+- ✅ VNC service for headless access (JennEdge/JennDock)
+- ✅ X11 service for workstation access (JennEdge)
+- ✅ GUI feature flag & permission (`gate.gui.access`)
+- ✅ Database schema extended for GUI fields
+- ✅ Orphan detection job
+- ✅ Integration tests (14 pre-release validation checklist items)
 
 ## Contributing
 
