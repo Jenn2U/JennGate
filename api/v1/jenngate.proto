@@ -1,0 +1,125 @@
+syntax = "proto3";
+
+package jenngate.v1;
+
+option go_package = "github.com/Jenn2U/JennGate/api/v1;jenngatev1";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// JennGateService provides core JennGate functionality for Jenn clients.
+service JennGateService {
+  // SyncAccessPolicies syncs access policies from Jenn to JennGate.
+  rpc SyncAccessPolicies(SyncPoliciesRequest) returns (SyncPoliciesResponse);
+
+  // IssueCertificate issues SSH/TLS certificates for device access.
+  rpc IssueCertificate(IssueCertRequest) returns (IssueCertResponse);
+
+  // GetSessionStatus queries the status of a JennGate session.
+  rpc GetSessionStatus(GetSessionStatusRequest) returns (GetSessionStatusResponse);
+
+  // GetDevices retrieves list of registered devices.
+  rpc GetDevices(google.protobuf.Empty) returns (GetDevicesResponse);
+}
+
+// JennGateAdminService provides administrative operations for device management.
+service JennGateAdminService {
+  // ApproveDevice approves a pending device for access.
+  rpc ApproveDevice(ApproveDeviceRequest) returns (google.protobuf.Empty);
+
+  // DecommissionDevice decommissions a registered device.
+  rpc DecommissionDevice(DecommissionRequest) returns (google.protobuf.Empty);
+
+  // GetPendingDevices retrieves list of pending device approvals.
+  rpc GetPendingDevices(google.protobuf.Empty) returns (PendingDevicesResponse);
+}
+
+// AccessPolicy represents a single access policy.
+message AccessPolicy {
+  string principal_type = 1;  // "user", "group", "device"
+  string principal_id = 2;    // user-123, group-abc, etc.
+  string target_type = 3;     // "device", "service"
+  string target_id = 4;       // device-456, service-xyz, etc.
+  repeated string permissions = 5;  // ["gate.connect", "gate.gui.access"]
+}
+
+// SyncPoliciesRequest requests syncing of access policies.
+message SyncPoliciesRequest {
+  repeated AccessPolicy policies = 1;
+}
+
+// SyncPoliciesResponse returns the result of syncing policies.
+message SyncPoliciesResponse {
+  bool success = 1;
+  int32 synced_count = 2;
+  string error_message = 3;
+}
+
+// IssueCertRequest requests certificate issuance.
+message IssueCertRequest {
+  string user_id = 1;
+  string device_id = 2;
+  int32 duration_minutes = 3;
+  bool enable_gui = 4;
+}
+
+// IssueCertResponse returns issued certificate and session info.
+message IssueCertResponse {
+  string cert_pem = 1;
+  string key_pem = 2;
+  google.protobuf.Timestamp expires_at = 3;
+  string session_id = 4;
+  string error_message = 5;
+}
+
+// GetSessionStatusRequest requests session status.
+message GetSessionStatusRequest {
+  string session_id = 1;
+}
+
+// GetSessionStatusResponse returns session status.
+message GetSessionStatusResponse {
+  string session_id = 1;
+  string state = 2;  // "ACTIVE", "CLOSED", "EXPIRED"
+  bool ssh_active = 3;
+  bool gui_active = 4;
+  string error_message = 5;
+}
+
+// Device represents a registered device.
+message Device {
+  string device_id = 1;
+  string name = 2;
+  string state = 3;  // "ACTIVE", "PENDING", "SUSPENDED"
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp last_seen = 5;
+}
+
+// GetDevicesResponse returns list of registered devices.
+message GetDevicesResponse {
+  repeated Device devices = 1;
+}
+
+// ApproveDeviceRequest requests device approval.
+message ApproveDeviceRequest {
+  string device_id = 1;
+}
+
+// DecommissionRequest requests device decommissioning.
+message DecommissionRequest {
+  string device_id = 1;
+  string reason = 2;
+}
+
+// PendingDevice represents a pending device approval.
+message PendingDevice {
+  string device_id = 1;
+  string name = 2;
+  google.protobuf.Timestamp created_at = 3;
+  string requestor_id = 4;
+}
+
+// PendingDevicesResponse returns list of pending devices.
+message PendingDevicesResponse {
+  repeated PendingDevice devices = 1;
+}
