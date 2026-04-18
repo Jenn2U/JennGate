@@ -62,7 +62,10 @@ func TestGUISessionFieldsMigration(t *testing.T) {
 	runMigrations(t, db)
 
 	// Verify gate_sessions table has GUI columns
-	var enableGUI, guiProtocol, xDisplay, vncPort sql.NullString
+	var enableGUI sql.NullBool
+	var guiProtocol sql.NullString
+	var xDisplay sql.NullInt64
+	var vncPort sql.NullInt64
 	query := `SELECT enable_gui, gui_protocol, x11_display_port, vnc_port
 	          FROM gate_sessions LIMIT 1`
 	err := db.QueryRow(query).Scan(&enableGUI, &guiProtocol, &xDisplay, &vncPort)

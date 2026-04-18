@@ -11,6 +11,10 @@ import (
 // RunMigrations applies all pending migrations from the migrations directory.
 // It takes a PostgreSQL connection URL and runs all migrations in sequence.
 // If no migrations are pending, it returns nil without error.
+//
+// Migration files are auto-discovered from the migrations/ directory.
+// The golang-migrate library automatically sorts and executes migrations
+// in lexicographic order (e.g., 001_*, 002_*, etc.).
 func RunMigrations(dbURL string) error {
 	// Path to migration files (relative to where the binary is executed)
 	migrationPath := "file://migrations"
