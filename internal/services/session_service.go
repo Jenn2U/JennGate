@@ -61,8 +61,8 @@ func (s *SessionService) CreateSession(
 	certSerial string,
 	certExpiresAt time.Time,
 ) (*Session, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	sessionID := uuid.New().String()
 	now := time.Now()
@@ -398,12 +398,12 @@ func (s *SessionService) CleanupExpiredSessions(ctx context.Context) error {
 	_, err := s.db.ExecContext(
 		ctx,
 		query,
-		StateDisconnected,
-		now,
-		"cert_expired",
-		now,
-		StateDisconnected,
-		now,
+		StateDisconnected, // $1
+		now,               // $2
+		"cert_expired",    // $3
+		now,               // $4
+		StateDisconnected, // $5
+		now,               // $6
 	)
 
 	if err != nil {
