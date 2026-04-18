@@ -2,8 +2,9 @@ package models
 
 // IssueCertRequest is the request to issue a new SSH certificate.
 type IssueCertRequest struct {
-	DeviceID         string `json:"device_id" binding:"required"`
-	DurationMinutes  int    `json:"duration_minutes,omitempty"`
+	DeviceID        string `json:"device_id" binding:"required"`
+	DurationMinutes int    `json:"duration_minutes,omitempty"`
+	EnableGUI       bool   `json:"enable_gui"`
 }
 
 // ListSessionsRequest is the request to list sessions (query parameters).

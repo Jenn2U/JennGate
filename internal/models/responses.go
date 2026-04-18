@@ -4,9 +4,14 @@ import "time"
 
 // IssueCertResponse returns the issued SSH certificate.
 type IssueCertResponse struct {
-	CertPEM   string    `json:"cert_pem"`
-	KeyPEM    string    `json:"key_pem"`
-	ExpiresAt time.Time `json:"expires_at"`
+	CertPEM      string `json:"cert_pem"`
+	KeyPEM       string `json:"key_pem"`
+	ExpiresAt    string `json:"expires_at"`
+	SessionID    string `json:"session_id"`
+	SSHPort      int    `json:"ssh_port"`
+	GUIAvailable bool   `json:"gui_available"`
+	VNCPort      *int   `json:"vnc_port,omitempty"`
+	X11Display   *string `json:"x11_display,omitempty"`
 }
 
 // SessionInfo represents a single session for API responses.
@@ -93,4 +98,17 @@ type DecommissionDeviceResponse struct {
 	SessionsTerminated int    `json:"sessions_terminated"`
 	RecordingsDeleted  int    `json:"recordings_deleted"`
 	AuditLogged        bool   `json:"audit_logged"`
+}
+
+// SessionStatusResponse returns the status of a remote access session.
+type SessionStatusResponse struct {
+	SessionID   string `json:"session_id"`
+	State       string `json:"state"`
+	SSHActive   bool   `json:"ssh_active"`
+	GUIActive   bool   `json:"gui_active"`
+	GUIProtocol *string `json:"gui_protocol,omitempty"`
+	GUIPort     *int   `json:"gui_port,omitempty"`
+	SSHPort     int    `json:"ssh_port"`
+	StartedAt   string `json:"started_at"`
+	UpdatedAt   string `json:"updated_at"`
 }

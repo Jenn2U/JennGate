@@ -48,6 +48,7 @@ func (h *Handlers) RegisterRoutes(router *gin.Engine) {
 		// Session management
 		api.GET("/sessions", h.ListSessions)
 		api.GET("/sessions/:session_id", h.GetSession)
+		api.GET("/sessions/:session_id/status", h.SessionStatus)
 
 		// Recording download
 		api.GET("/recordings/:recording_id", h.GetRecording)
@@ -147,13 +148,32 @@ func (h *Handlers) IssueCert(c *gin.Context) {
 		return
 	}
 
+	// Check if user has gate.gui.access permission (if requested)
+	guiAvailable := false
+	var vncPort *int
+	var x11Display *string
+
+	if req.EnableGUI {
+		// TODO: Extract user ID from JWT token and check gate.gui.access permission (Phase 3b)
+		// For now: assume user has permission
+		guiAvailable = true
+		port := 5900
+		vncPort = &port
+	}
+
 	// TODO: Return certificate and private key (Phase 3b - currently stub)
 	expiresAt := time.Now().Add(time.Duration(req.DurationMinutes) * time.Minute)
+	sessionID := "session-" + time.Now().Format("20060102150405")
 
 	c.JSON(http.StatusOK, models.IssueCertResponse{
-		CertPEM:   string(certBytes),
-		KeyPEM:    "", // TODO: Implement key generation (Phase 3b)
-		ExpiresAt: expiresAt,
+		CertPEM:      string(certBytes),
+		KeyPEM:       "", // TODO: Implement key generation (Phase 3b)
+		ExpiresAt:    expiresAt.Format(time.RFC3339),
+		SessionID:    sessionID,
+		SSHPort:      2222,
+		GUIAvailable: guiAvailable,
+		VNCPort:      vncPort,
+		X11Display:   x11Display,
 	})
 }
 
@@ -226,6 +246,54 @@ func (h *Handlers) GetSession(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, info)
+}
+
+// SessionStatus returns the current status of a session including GUI activity.
+// GET /api/v1/gate/sessions/:session_id/status
+func (h *Handlers) SessionStatus(c *gin.Context) {
+	sessionID := c.Param("session_id")
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	session, err := h.sessionService.GetSession(ctx, sessionID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, models.ErrorResponse{
+				Error: "session not found",
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "failed to get session",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	// Determine if GUI is active
+	guiActive := session.GUIProtocol != nil && *session.GUIProtocol != ""
+	var guiPort *int
+
+	if guiActive {
+		if *session.GUIProtocol == "vnc" {
+			guiPort = session.VNCPort
+		} else if *session.GUIProtocol == "x11" {
+			guiPort = session.X11DisplayPort
+		}
+	}
+
+	c.JSON(http.StatusOK, models.SessionStatusResponse{
+		SessionID:   session.ID,
+		State:       session.State,
+		SSHActive:   true,
+		GUIActive:   guiActive,
+		GUIProtocol: session.GUIProtocol,
+		GUIPort:     guiPort,
+		SSHPort:     session.SSHPort,
+		StartedAt:   session.StartedAt.Format(time.RFC3339),
+		UpdatedAt:   session.UpdatedAt.Format(time.RFC3339),
+	})
 }
 
 // ============================================================================
