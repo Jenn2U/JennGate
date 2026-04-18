@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/Jenn2U/JennGate/internal/config"
+	"github.com/Jenn2U/JennGate/internal/daemon"
 	"github.com/Jenn2U/JennGate/internal/db"
 	"github.com/Jenn2U/JennGate/internal/handlers"
 	"github.com/Jenn2U/JennGate/internal/migrations"
@@ -70,6 +71,16 @@ func main() {
 	h := handlers.NewHandlers(caService, sessionSvc, recordingSvc, database)
 	router := gin.Default()
 	h.RegisterRoutes(router)
+
+	// Initialize gRPC daemon server (Phase 3a: Stub implementation)
+	daemonSvc := daemon.NewDaemonServer(sessionSvc, recordingSvc, database)
+	go func() {
+		daemonPort := 9090 // TODO: Make configurable from JENNGATE_DAEMON_PORT (Phase 3b)
+		log.Printf("Starting gRPC daemon server on port %d", daemonPort)
+		if err := daemon.StartDaemonServer(daemonPort, daemonSvc); err != nil {
+			log.Printf("Daemon server error: %v", err)
+		}
+	}()
 
 	// Start HTTP server
 	addr := fmt.Sprintf(":%d", cfg.HTTPPort)
