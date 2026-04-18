@@ -1,16 +1,36 @@
 package integration
 
 import (
-	"context"
 	"database/sql"
-	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
-	"time"
 
 	_ "github.com/lib/pq"
 )
+
+// ============================================================================
+// GUI Pre-Release Validation Checklist (Phase 3b)
+// ============================================================================
+//
+// For the 14-item pre-release validation checklist for GUI features,
+// see gui_test.go in this directory. The checklist covers:
+//
+// 1.  SessionService.UpdateSessionGUIStatus() updates DB correctly
+// 2.  SessionService.EndGUISession() clears GUI data
+// 3.  VNCService.Start() listens on port 5900
+// 4.  X11Service.Start() binds to :10 (on Edge only)
+// 5.  PolicyService.CanAccessGUI() evaluates permissions
+// 6.  Daemon registers with JennGate (unchanged flow)
+// 7.  Session created with enable_gui=true
+// 8.  Daemon receives NotifyGUISessionStart RPC
+// 9.  VNC server starts on daemon, port confirmed
+// 10. Session status endpoint returns gui_active=true
+// 11. SSH Terminal: unchanged workflow (backward compat)
+// 12. VNC Access: user connects to VNC via SSH tunnel
+// 13. Policy Enforcement: user without permission gets gui=false
+// 14. Clean Shutdown: session ends, VNC stops, no orphans
+//
+// Tests are structured as stubs for Phase 3b with full E2E implementation.
+// See gui_test.go for detailed documentation on each checklist item.
 
 // setupIntegrationDB creates a test database for integration tests.
 func setupIntegrationDB(t *testing.T) *sql.DB {
