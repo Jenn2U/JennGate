@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -36,7 +37,7 @@ type Recording struct {
 }
 
 // NewRecordingService creates a new RecordingService with database connection.
-// It creates the recordingDir if it doesn't exist.
+// It creates the recordingDir if it doesn't exist and validates DB connectivity.
 func NewRecordingService(db *sql.DB, recordingDir string) (*RecordingService, error) {
 	if recordingDir == "" {
 		recordingDir = "/var/lib/jenn-edge/recordings"
@@ -45,6 +46,13 @@ func NewRecordingService(db *sql.DB, recordingDir string) (*RecordingService, er
 	// Create directory if it doesn't exist
 	if err := os.MkdirAll(recordingDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create recording directory: %w", err)
+	}
+
+	// Validate database connectivity
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
+		return nil, fmt.Errorf("failed to validate database connection: %w", err)
 	}
 
 	return &RecordingService{
@@ -56,7 +64,7 @@ func NewRecordingService(db *sql.DB, recordingDir string) (*RecordingService, er
 // CreateRecording creates a new recording entry for a session.
 // It generates a UUID for the recording and formats the file path as
 // {recordingDir}/{sessionID}-{recordingID}.cast (asciinema format).
-func (r *RecordingService) CreateRecording(userID, deviceID, sessionID string) (string, error) {
+func (r *RecordingService) CreateRecording(ctx context.Context, userID, deviceID, sessionID string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -69,13 +77,13 @@ func (r *RecordingService) CreateRecording(userID, deviceID, sessionID string) (
 	query := `
 		INSERT INTO gate_recordings (id, session_id, user_id, device_id, file_path, started_at, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING id
 	`
 
-	err := r.db.QueryRow(
+	_, err := r.db.ExecContext(
+		ctx,
 		query,
 		recordingID, sessionID, userID, deviceID, filePath, now, now,
-	).Scan(&recordingID)
+	)
 
 	if err != nil {
 		return "", fmt.Errorf("failed to create recording: %w", err)
@@ -86,7 +94,7 @@ func (r *RecordingService) CreateRecording(userID, deviceID, sessionID string) (
 
 // GetRecording retrieves a recording by ID.
 // Returns the Recording struct with all metadata or an error if not found.
-func (r *RecordingService) GetRecording(recordingID string) (*Recording, error) {
+func (r *RecordingService) GetRecording(ctx context.Context, recordingID string) (*Recording, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -97,7 +105,7 @@ func (r *RecordingService) GetRecording(recordingID string) (*Recording, error) 
 	`
 
 	rec := &Recording{}
-	err := r.db.QueryRow(query, recordingID).Scan(
+	err := r.db.QueryRowContext(ctx, query, recordingID).Scan(
 		&rec.ID, &rec.SessionID, &rec.UserID, &rec.DeviceID, &rec.FilePath,
 		&rec.TimingPath, &rec.ByteSize, &rec.DurationSeconds, &rec.StartedAt,
 		&rec.CompletedAt, &rec.CreatedAt,
@@ -115,7 +123,7 @@ func (r *RecordingService) GetRecording(recordingID string) (*Recording, error) 
 
 // UpdateRecording updates the recording metadata after the session ends.
 // Sets byte_size, duration_seconds, and completed_at timestamp.
-func (r *RecordingService) UpdateRecording(recordingID string, byteSize int64, durationSeconds int) error {
+func (r *RecordingService) UpdateRecording(ctx context.Context, recordingID string, byteSize int64, durationSeconds int) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -127,7 +135,7 @@ func (r *RecordingService) UpdateRecording(recordingID string, byteSize int64, d
 		WHERE id = $4
 	`
 
-	_, err := r.db.Exec(query, byteSize, durationSeconds, now, recordingID)
+	_, err := r.db.ExecContext(ctx, query, byteSize, durationSeconds, now, recordingID)
 	if err != nil {
 		return fmt.Errorf("failed to update recording: %w", err)
 	}
@@ -138,13 +146,13 @@ func (r *RecordingService) UpdateRecording(recordingID string, byteSize int64, d
 // DeleteRecording deletes a recording from the database and removes the physical file.
 // Errors from file deletion are ignored (file may already be gone).
 // Used on device decommission or session cleanup.
-func (r *RecordingService) DeleteRecording(recordingID string) error {
+func (r *RecordingService) DeleteRecording(ctx context.Context, recordingID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	// Get the file path before deleting from DB
 	var filePath string
-	err := r.db.QueryRow("SELECT file_path FROM gate_recordings WHERE id = $1", recordingID).Scan(&filePath)
+	err := r.db.QueryRowContext(ctx, "SELECT file_path FROM gate_recordings WHERE id = $1", recordingID).Scan(&filePath)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("recording not found: %s", recordingID)
@@ -154,7 +162,7 @@ func (r *RecordingService) DeleteRecording(recordingID string) error {
 
 	// Delete from database
 	query := `DELETE FROM gate_recordings WHERE id = $1`
-	_, err = r.db.Exec(query, recordingID)
+	_, err = r.db.ExecContext(ctx, query, recordingID)
 	if err != nil {
 		return fmt.Errorf("failed to delete recording: %w", err)
 	}
@@ -167,7 +175,7 @@ func (r *RecordingService) DeleteRecording(recordingID string) error {
 
 // ListRecordingsBySession returns all recordings for a session.
 // Results are ordered by created_at DESC (most recent first).
-func (r *RecordingService) ListRecordingsBySession(sessionID string) ([]*Recording, error) {
+func (r *RecordingService) ListRecordingsBySession(ctx context.Context, sessionID string) ([]*Recording, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -178,7 +186,7 @@ func (r *RecordingService) ListRecordingsBySession(sessionID string) ([]*Recordi
 		ORDER BY created_at DESC
 	`
 
-	rows, err := r.db.Query(query, sessionID)
+	rows, err := r.db.QueryContext(ctx, query, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list recordings for session: %w", err)
 	}
@@ -207,7 +215,7 @@ func (r *RecordingService) ListRecordingsBySession(sessionID string) ([]*Recordi
 
 // ListRecordingsByDevice returns all recordings for a device.
 // Results are ordered by created_at DESC (most recent first).
-func (r *RecordingService) ListRecordingsByDevice(deviceID string) ([]*Recording, error) {
+func (r *RecordingService) ListRecordingsByDevice(ctx context.Context, deviceID string) ([]*Recording, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -218,7 +226,7 @@ func (r *RecordingService) ListRecordingsByDevice(deviceID string) ([]*Recording
 		ORDER BY created_at DESC
 	`
 
-	rows, err := r.db.Query(query, deviceID)
+	rows, err := r.db.QueryContext(ctx, query, deviceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list recordings for device: %w", err)
 	}

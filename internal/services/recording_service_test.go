@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"path/filepath"
@@ -101,7 +102,7 @@ func TestCreateRecording(t *testing.T) {
 	deviceID := createTestDevice(t, db)
 	sessionID := createTestSession(t, db, userID, deviceID)
 
-	recordingID, err := svc.CreateRecording(userID, deviceID, sessionID)
+	recordingID, err := svc.CreateRecording(context.Background(), userID, deviceID, sessionID)
 	if err != nil {
 		t.Fatalf("CreateRecording failed: %v", err)
 	}
@@ -111,7 +112,7 @@ func TestCreateRecording(t *testing.T) {
 	}
 
 	// Verify in database
-	rec, err := svc.GetRecording(recordingID)
+	rec, err := svc.GetRecording(context.Background(), recordingID)
 	if err != nil {
 		t.Fatalf("GetRecording failed: %v", err)
 	}
@@ -159,13 +160,13 @@ func TestGetRecording(t *testing.T) {
 	deviceID := createTestDevice(t, db)
 	sessionID := createTestSession(t, db, userID, deviceID)
 
-	recordingID, err := svc.CreateRecording(userID, deviceID, sessionID)
+	recordingID, err := svc.CreateRecording(context.Background(), userID, deviceID, sessionID)
 	if err != nil {
 		t.Fatalf("CreateRecording failed: %v", err)
 	}
 
 	// Retrieve recording
-	rec, err := svc.GetRecording(recordingID)
+	rec, err := svc.GetRecording(context.Background(), recordingID)
 	if err != nil {
 		t.Fatalf("GetRecording failed: %v", err)
 	}
@@ -178,7 +179,7 @@ func TestGetRecording(t *testing.T) {
 	}
 
 	// Test non-existent recording
-	_, err = svc.GetRecording("00000000-0000-0000-0000-000000000000")
+	_, err = svc.GetRecording(context.Background(), "00000000-0000-0000-0000-000000000000")
 	if err == nil {
 		t.Fatal("expected error for non-existent recording")
 	}
@@ -199,7 +200,7 @@ func TestUpdateRecording(t *testing.T) {
 	deviceID := createTestDevice(t, db)
 	sessionID := createTestSession(t, db, userID, deviceID)
 
-	recordingID, err := svc.CreateRecording(userID, deviceID, sessionID)
+	recordingID, err := svc.CreateRecording(context.Background(), userID, deviceID, sessionID)
 	if err != nil {
 		t.Fatalf("CreateRecording failed: %v", err)
 	}
@@ -208,13 +209,13 @@ func TestUpdateRecording(t *testing.T) {
 	byteSize := int64(102400)
 	durationSeconds := 3600
 
-	err = svc.UpdateRecording(recordingID, byteSize, durationSeconds)
+	err = svc.UpdateRecording(context.Background(), recordingID, byteSize, durationSeconds)
 	if err != nil {
 		t.Fatalf("UpdateRecording failed: %v", err)
 	}
 
 	// Verify update
-	rec, err := svc.GetRecording(recordingID)
+	rec, err := svc.GetRecording(context.Background(), recordingID)
 	if err != nil {
 		t.Fatalf("GetRecording failed: %v", err)
 	}
@@ -245,13 +246,13 @@ func TestDeleteRecording(t *testing.T) {
 	deviceID := createTestDevice(t, db)
 	sessionID := createTestSession(t, db, userID, deviceID)
 
-	recordingID, err := svc.CreateRecording(userID, deviceID, sessionID)
+	recordingID, err := svc.CreateRecording(context.Background(), userID, deviceID, sessionID)
 	if err != nil {
 		t.Fatalf("CreateRecording failed: %v", err)
 	}
 
 	// Get the file path
-	rec, err := svc.GetRecording(recordingID)
+	rec, err := svc.GetRecording(context.Background(), recordingID)
 	if err != nil {
 		t.Fatalf("GetRecording failed: %v", err)
 	}
@@ -269,13 +270,13 @@ func TestDeleteRecording(t *testing.T) {
 	}
 
 	// Delete recording
-	err = svc.DeleteRecording(recordingID)
+	err = svc.DeleteRecording(context.Background(), recordingID)
 	if err != nil {
 		t.Fatalf("DeleteRecording failed: %v", err)
 	}
 
 	// Verify removed from database
-	_, err = svc.GetRecording(recordingID)
+	_, err = svc.GetRecording(context.Background(), recordingID)
 	if err == nil {
 		t.Fatal("expected error for deleted recording")
 	}
@@ -302,18 +303,18 @@ func TestListRecordingsBySession(t *testing.T) {
 	sessionID := createTestSession(t, db, userID, deviceID)
 
 	// Create multiple recordings
-	recordingID1, err := svc.CreateRecording(userID, deviceID, sessionID)
+	recordingID1, err := svc.CreateRecording(context.Background(), userID, deviceID, sessionID)
 	if err != nil {
 		t.Fatalf("CreateRecording 1 failed: %v", err)
 	}
 
-	recordingID2, err := svc.CreateRecording(userID, deviceID, sessionID)
+	recordingID2, err := svc.CreateRecording(context.Background(), userID, deviceID, sessionID)
 	if err != nil {
 		t.Fatalf("CreateRecording 2 failed: %v", err)
 	}
 
 	// List recordings for session
-	recordings, err := svc.ListRecordingsBySession(sessionID)
+	recordings, err := svc.ListRecordingsBySession(context.Background(), sessionID)
 	if err != nil {
 		t.Fatalf("ListRecordingsBySession failed: %v", err)
 	}
@@ -355,18 +356,18 @@ func TestListRecordingsByDevice(t *testing.T) {
 	sessionID2 := createTestSession(t, db, userID, deviceID)
 
 	// Create recordings for two sessions on same device
-	recordingID1, err := svc.CreateRecording(userID, deviceID, sessionID1)
+	recordingID1, err := svc.CreateRecording(context.Background(), userID, deviceID, sessionID1)
 	if err != nil {
 		t.Fatalf("CreateRecording 1 failed: %v", err)
 	}
 
-	recordingID2, err := svc.CreateRecording(userID, deviceID, sessionID2)
+	recordingID2, err := svc.CreateRecording(context.Background(), userID, deviceID, sessionID2)
 	if err != nil {
 		t.Fatalf("CreateRecording 2 failed: %v", err)
 	}
 
 	// List recordings for device
-	recordings, err := svc.ListRecordingsByDevice(deviceID)
+	recordings, err := svc.ListRecordingsByDevice(context.Background(), deviceID)
 	if err != nil {
 		t.Fatalf("ListRecordingsByDevice failed: %v", err)
 	}
