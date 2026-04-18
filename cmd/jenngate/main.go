@@ -41,12 +41,16 @@ func main() {
 	log.Println("Migrations completed successfully")
 
 	// Initialize services
-	// TODO: Initialize sessions and recordings services
 	caService, err := services.NewCAService(database)
 	if err != nil {
 		log.Fatal("Failed to initialize CA service:", err)
 	}
 	log.Println("CA service initialized successfully")
+
+	sessionSvc := services.NewSessionService(database)
+	log.Printf("Session service initialized successfully (db: %v)", sessionSvc != nil)
+
+	// TODO: Initialize recordings service
 
 	// Verify CA public key is available
 	pubKey := caService.GetPublicKey()
