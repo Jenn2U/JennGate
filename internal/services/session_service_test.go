@@ -369,6 +369,79 @@ func TestSessionServiceListSessionsByDeviceReturnsAllSessions(t *testing.T) {
 	}
 }
 
+// TestSessionServiceListSessionsByUser tests that ListSessionsByUser returns
+// all sessions for a specific user.
+func TestSessionServiceListSessionsByUser(t *testing.T) {
+	if !hasTestDB() {
+		t.Skip("skipping: test database not available")
+	}
+
+	db := setupSessionTestDB(t)
+	defer db.Close()
+
+	service := NewSessionService(db)
+	ctx := context.Background()
+
+	// Setup: insert test device
+	deviceID := "device-123"
+	user1 := "user-1"
+	user2 := "user-2"
+	insertTestDevice(t, db)
+
+	// Create sessions for two different users
+	sess1, err := service.CreateSession(ctx, user1, deviceID, "cert-1", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("CreateSession 1 failed: %v", err)
+	}
+
+	sess2, err := service.CreateSession(ctx, user1, deviceID, "cert-2", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("CreateSession 2 failed: %v", err)
+	}
+
+	sess3, err := service.CreateSession(ctx, user2, deviceID, "cert-3", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("CreateSession 3 failed: %v", err)
+	}
+
+	// List sessions for user1
+	sessions, err := service.ListSessionsByUser(ctx, user1)
+	if err != nil {
+		t.Fatalf("ListSessionsByUser failed: %v", err)
+	}
+
+	// Should return 2 sessions for user1 only
+	if len(sessions) != 2 {
+		t.Errorf("expected 2 sessions for user1, got %d", len(sessions))
+	}
+
+	// Verify we got user1's sessions (most recent first)
+	if sessions[0].ID != sess2.ID || sessions[1].ID != sess1.ID {
+		t.Errorf("returned sessions don't match expected IDs or order")
+	}
+
+	// Verify user2's session is not included
+	for _, s := range sessions {
+		if s.UserID != user1 {
+			t.Errorf("found session for different user: expected %s, got %s", user1, s.UserID)
+		}
+	}
+
+	// List sessions for user2
+	sessions, err = service.ListSessionsByUser(ctx, user2)
+	if err != nil {
+		t.Fatalf("ListSessionsByUser for user2 failed: %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Errorf("expected 1 session for user2, got %d", len(sessions))
+	}
+
+	if sessions[0].ID != sess3.ID {
+		t.Errorf("expected session ID %s, got %s", sess3.ID, sessions[0].ID)
+	}
+}
+
 // TestSessionServiceMarkConnectedFailsIfNotAuthorized tests that MarkConnected
 // only works when session is in AUTHORIZED state.
 func TestSessionServiceMarkConnectedFailsIfNotAuthorized(t *testing.T) {

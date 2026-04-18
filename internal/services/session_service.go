@@ -10,6 +10,16 @@ import (
 	"github.com/google/uuid"
 )
 
+// SessionState represents the state of a session in the lifecycle
+type SessionState string
+
+const (
+	StateRequested   SessionState = "REQUESTED"
+	StateAuthorized  SessionState = "AUTHORIZED"
+	StateActive      SessionState = "ACTIVE"
+	StateDisconnected SessionState = "DISCONNECTED"
+)
+
 // SessionService manages remote access session lifecycle.
 // It tracks session state transitions and metadata for SSH connections.
 type SessionService struct {
@@ -67,7 +77,7 @@ func (s *SessionService) CreateSession(
 		ID:           sessionID,
 		UserID:       userID,
 		DeviceID:     deviceID,
-		State:        "REQUESTED",
+		State:        string(StateRequested),
 		CertSerial:   certSerial,
 		CertExpiresAt: certExpiresAt,
 		StartedAt:    now,
@@ -79,7 +89,7 @@ func (s *SessionService) CreateSession(
 	err := s.db.QueryRowContext(
 		ctx,
 		query,
-		sessionID, userID, deviceID, "REQUESTED", certSerial, certExpiresAt, now, 2222, now, now,
+		sessionID, userID, deviceID, StateRequested, certSerial, certExpiresAt, now, 2222, now, now,
 	).Scan(
 		&session.ID, &session.UserID, &session.DeviceID, &session.State,
 		&session.CertSerial, &session.CertExpiresAt, &session.StartedAt,
@@ -131,10 +141,10 @@ func (s *SessionService) UpdateSessionState(ctx context.Context, sessionID strin
 
 	// Validate new state
 	validStates := map[string]bool{
-		"REQUESTED":    true,
-		"AUTHORIZED":   true,
-		"ACTIVE":       true,
-		"DISCONNECTED": true,
+		string(StateRequested):   true,
+		string(StateAuthorized):  true,
+		string(StateActive):      true,
+		string(StateDisconnected): true,
 	}
 
 	if !validStates[newState] {
@@ -153,10 +163,10 @@ func (s *SessionService) UpdateSessionState(ctx context.Context, sessionID strin
 
 	// Validate state transition
 	validTransitions := map[string]map[string]bool{
-		"REQUESTED":    {"AUTHORIZED": true, "DISCONNECTED": true},
-		"AUTHORIZED":   {"ACTIVE": true, "DISCONNECTED": true},
-		"ACTIVE":       {"DISCONNECTED": true},
-		"DISCONNECTED": {},
+		string(StateRequested):   {string(StateAuthorized): true, string(StateDisconnected): true},
+		string(StateAuthorized):  {string(StateActive): true, string(StateDisconnected): true},
+		string(StateActive):      {string(StateDisconnected): true},
+		string(StateDisconnected): {},
 	}
 
 	transitions, ok := validTransitions[currentState]
@@ -197,7 +207,7 @@ func (s *SessionService) MarkConnected(ctx context.Context, sessionID string) er
 	}
 
 	// Only transition from AUTHORIZED to ACTIVE
-	if currentState != "AUTHORIZED" {
+	if currentState != string(StateAuthorized) {
 		return fmt.Errorf("cannot mark connected: session must be in AUTHORIZED state, current state: %s", currentState)
 	}
 
@@ -208,7 +218,7 @@ func (s *SessionService) MarkConnected(ctx context.Context, sessionID string) er
 		WHERE id = $4
 	`
 
-	_, err = s.db.ExecContext(ctx, query, now, "ACTIVE", now, sessionID)
+	_, err = s.db.ExecContext(ctx, query, now, StateActive, now, sessionID)
 	if err != nil {
 		return fmt.Errorf("failed to mark session connected: %w", err)
 	}
@@ -232,7 +242,7 @@ func (s *SessionService) DisconnectSession(ctx context.Context, sessionID string
 	}
 
 	// Cannot transition from DISCONNECTED
-	if currentState == "DISCONNECTED" {
+	if currentState == string(StateDisconnected) {
 		return fmt.Errorf("session already disconnected")
 	}
 
@@ -243,7 +253,7 @@ func (s *SessionService) DisconnectSession(ctx context.Context, sessionID string
 		WHERE id = $5
 	`
 
-	_, err = s.db.ExecContext(ctx, query, "DISCONNECTED", now, reason, now, sessionID)
+	_, err = s.db.ExecContext(ctx, query, StateDisconnected, now, reason, now, sessionID)
 	if err != nil {
 		return fmt.Errorf("failed to disconnect session: %w", err)
 	}
@@ -303,7 +313,7 @@ func (s *SessionService) ListActiveSessions(ctx context.Context, deviceID string
 		ORDER BY created_at DESC
 	`
 
-	rows, err := s.db.QueryContext(ctx, query, deviceID, "ACTIVE")
+	rows, err := s.db.QueryContext(ctx, query, deviceID, StateActive)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list active sessions: %w", err)
 	}
@@ -331,6 +341,47 @@ func (s *SessionService) ListActiveSessions(ctx context.Context, deviceID string
 	return sessions, nil
 }
 
+// ListSessionsByUser returns all sessions for a specific user
+func (s *SessionService) ListSessionsByUser(ctx context.Context, userID string) ([]*Session, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	query := `
+		SELECT id, user_id, device_id, state, cert_serial, cert_expires_at, started_at, connected_at, disconnected_at, ssh_port, recording_id, disconnect_reason, created_at, updated_at
+		FROM gate_sessions
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query sessions for user: %w", err)
+	}
+	defer rows.Close()
+
+	var sessions []*Session
+	for rows.Next() {
+		session := &Session{}
+		err := rows.Scan(
+			&session.ID, &session.UserID, &session.DeviceID, &session.State,
+			&session.CertSerial, &session.CertExpiresAt, &session.StartedAt,
+			&session.ConnectedAt, &session.DisconnectedAt, &session.SSHPort,
+			&session.RecordingID, &session.DisconnectReason, &session.CreatedAt,
+			&session.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan session: %w", err)
+		}
+		sessions = append(sessions, session)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating sessions: %w", err)
+	}
+
+	return sessions, nil
+}
+
 // CleanupExpiredSessions marks sessions as DISCONNECTED if their certificates have expired.
 // This is intended to be run periodically (every 1 hour).
 func (s *SessionService) CleanupExpiredSessions(ctx context.Context) error {
@@ -347,11 +398,11 @@ func (s *SessionService) CleanupExpiredSessions(ctx context.Context) error {
 	_, err := s.db.ExecContext(
 		ctx,
 		query,
-		"DISCONNECTED",
+		StateDisconnected,
 		now,
 		"cert_expired",
 		now,
-		"DISCONNECTED",
+		StateDisconnected,
 		now,
 	)
 
