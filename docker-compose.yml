@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    container_name: jenngate-postgres
+    environment:
+      POSTGRES_DB: jenngate
+      POSTGRES_USER: jenngate
+      POSTGRES_PASSWORD: jenngate
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jenngate"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # JennGate service
+  jenngate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jenngate-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      JENNGATE_DB_HOST: postgres
+      JENNGATE_DB_PORT: 5432
+      JENNGATE_DB_NAME: jenngate
+      JENNGATE_DB_USER: jenngate
+      JENNGATE_DB_PASSWORD: jenngate
+      JENNGATE_DB_SSLMODE: disable
+      JENNGATE_HTTP_PORT: 8081
+      JENNGATE_LOG_LEVEL: debug
+      JENNGATE_RECORDING_DIR: /var/lib/jenngate/recordings
+    ports:
+      - "8081:8081"
+      - "9090:9090"
+    volumes:
+      - ./recordings:/var/lib/jenngate/recordings
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  default:
+    name: jenngate-network
