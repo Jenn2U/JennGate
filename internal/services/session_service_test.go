@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	_ "github.com/lib/pq"
 )
 
@@ -612,6 +613,71 @@ func TestSessionServiceCleanupExpiredSessions(t *testing.T) {
 	}
 }
 
+// TestUpdateSessionGUIStatus tests that UpdateSessionGUIStatus correctly updates
+// the session with GUI protocol and port information.
+func TestUpdateSessionGUIStatus(t *testing.T) {
+	if !hasTestDB() {
+		t.Skip("skipping: test database not available")
+	}
+
+	db := setupSessionTestDB(t)
+	defer db.Close()
+
+	service := NewSessionService(db)
+	ctx := context.Background()
+
+	// Create a test session first
+	session, err := service.CreateSession(ctx, "user-123", "device-456", "cert-serial", time.Now().Add(1*time.Hour))
+	require.NoError(t, err)
+
+	// Update GUI status
+	err = service.UpdateSessionGUIStatus(ctx, session.ID, "vnc", 5900, 0)
+	require.NoError(t, err)
+
+	// Verify update
+	updated, err := service.GetSession(ctx, session.ID)
+	require.NoError(t, err)
+	require.NotNil(t, updated.GUIProtocol)
+	require.Equal(t, "vnc", *updated.GUIProtocol)
+	require.NotNil(t, updated.VNCPort)
+	require.Equal(t, 5900, *updated.VNCPort)
+	require.NotNil(t, updated.GUISessionStartedAt)
+}
+
+// TestEndGUISession tests that EndGUISession correctly clears GUI session data
+// and records the end time.
+func TestEndGUISession(t *testing.T) {
+	if !hasTestDB() {
+		t.Skip("skipping: test database not available")
+	}
+
+	db := setupSessionTestDB(t)
+	defer db.Close()
+
+	service := NewSessionService(db)
+	ctx := context.Background()
+
+	// Create session with active GUI
+	session, err := service.CreateSession(ctx, "user-123", "device-456", "cert-serial", time.Now().Add(1*time.Hour))
+	require.NoError(t, err)
+
+	// Set up GUI session
+	err = service.UpdateSessionGUIStatus(ctx, session.ID, "x11", 6010, 0)
+	require.NoError(t, err)
+
+	// End GUI session
+	err = service.EndGUISession(ctx, session.ID)
+	require.NoError(t, err)
+
+	// Verify cleanup
+	updated, err := service.GetSession(ctx, session.ID)
+	require.NoError(t, err)
+	require.Nil(t, updated.GUIProtocol)
+	require.Nil(t, updated.VNCPort)
+	require.Nil(t, updated.X11DisplayPort)
+	require.NotNil(t, updated.GUISessionEndedAt)
+}
+
 // Helper functions
 
 // setupSessionTestDB creates a PostgreSQL database connection for session service testing.
@@ -658,6 +724,11 @@ func setupSessionTestDB(t *testing.T) *sql.DB {
 		ssh_port INTEGER DEFAULT 2222,
 		recording_id UUID,
 		disconnect_reason TEXT,
+		gui_protocol TEXT,
+		x11_display_port INTEGER,
+		vnc_port INTEGER,
+		gui_session_started_at TIMESTAMP,
+		gui_session_ended_at TIMESTAMP,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);

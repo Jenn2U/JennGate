@@ -29,20 +29,25 @@ type SessionService struct {
 
 // Session represents a remote access session with state machine tracking.
 type Session struct {
-	ID               string
-	UserID           string
-	DeviceID         string
-	State            string    // REQUESTED, AUTHORIZED, ACTIVE, DISCONNECTED
-	CertSerial       string
-	CertExpiresAt    time.Time
-	StartedAt        time.Time
-	ConnectedAt      *time.Time
-	DisconnectedAt   *time.Time
-	SSHPort          int
-	RecordingID      *string
-	DisconnectReason *string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                  string
+	UserID              string
+	DeviceID            string
+	State               string    // REQUESTED, AUTHORIZED, ACTIVE, DISCONNECTED
+	CertSerial          string
+	CertExpiresAt       time.Time
+	StartedAt           time.Time
+	ConnectedAt         *time.Time
+	DisconnectedAt      *time.Time
+	SSHPort             int
+	RecordingID         *string
+	DisconnectReason    *string
+	GUIProtocol         *string    // "vnc", "x11", or nil
+	X11DisplayPort      *int
+	VNCPort             *int
+	GUISessionStartedAt *time.Time
+	GUISessionEndedAt   *time.Time
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 // NewSessionService creates a new SessionService with database connection.
@@ -70,7 +75,7 @@ func (s *SessionService) CreateSession(
 	query := `
 		INSERT INTO gate_sessions (id, user_id, device_id, state, cert_serial, cert_expires_at, started_at, ssh_port, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		RETURNING id, user_id, device_id, state, cert_serial, cert_expires_at, started_at, connected_at, disconnected_at, ssh_port, recording_id, disconnect_reason, created_at, updated_at
+		RETURNING id, user_id, device_id, state, cert_serial, cert_expires_at, started_at, connected_at, disconnected_at, ssh_port, recording_id, disconnect_reason, gui_protocol, x11_display_port, vnc_port, gui_session_started_at, gui_session_ended_at, created_at, updated_at
 	`
 
 	session := &Session{
@@ -94,7 +99,10 @@ func (s *SessionService) CreateSession(
 		&session.ID, &session.UserID, &session.DeviceID, &session.State,
 		&session.CertSerial, &session.CertExpiresAt, &session.StartedAt,
 		&session.ConnectedAt, &session.DisconnectedAt, &session.SSHPort,
-		&session.RecordingID, &session.DisconnectReason, &session.CreatedAt, &session.UpdatedAt,
+		&session.RecordingID, &session.DisconnectReason,
+		&session.GUIProtocol, &session.X11DisplayPort, &session.VNCPort,
+		&session.GUISessionStartedAt, &session.GUISessionEndedAt,
+		&session.CreatedAt, &session.UpdatedAt,
 	)
 
 	if err != nil {
@@ -110,7 +118,7 @@ func (s *SessionService) GetSession(ctx context.Context, sessionID string) (*Ses
 	defer s.mu.RUnlock()
 
 	query := `
-		SELECT id, user_id, device_id, state, cert_serial, cert_expires_at, started_at, connected_at, disconnected_at, ssh_port, recording_id, disconnect_reason, created_at, updated_at
+		SELECT id, user_id, device_id, state, cert_serial, cert_expires_at, started_at, connected_at, disconnected_at, ssh_port, recording_id, disconnect_reason, gui_protocol, x11_display_port, vnc_port, gui_session_started_at, gui_session_ended_at, created_at, updated_at
 		FROM gate_sessions
 		WHERE id = $1
 	`
@@ -120,7 +128,10 @@ func (s *SessionService) GetSession(ctx context.Context, sessionID string) (*Ses
 		&session.ID, &session.UserID, &session.DeviceID, &session.State,
 		&session.CertSerial, &session.CertExpiresAt, &session.StartedAt,
 		&session.ConnectedAt, &session.DisconnectedAt, &session.SSHPort,
-		&session.RecordingID, &session.DisconnectReason, &session.CreatedAt, &session.UpdatedAt,
+		&session.RecordingID, &session.DisconnectReason,
+		&session.GUIProtocol, &session.X11DisplayPort, &session.VNCPort,
+		&session.GUISessionStartedAt, &session.GUISessionEndedAt,
+		&session.CreatedAt, &session.UpdatedAt,
 	)
 
 	if err != nil {
@@ -267,7 +278,7 @@ func (s *SessionService) ListSessionsByDevice(ctx context.Context, deviceID stri
 	defer s.mu.RUnlock()
 
 	query := `
-		SELECT id, user_id, device_id, state, cert_serial, cert_expires_at, started_at, connected_at, disconnected_at, ssh_port, recording_id, disconnect_reason, created_at, updated_at
+		SELECT id, user_id, device_id, state, cert_serial, cert_expires_at, started_at, connected_at, disconnected_at, ssh_port, recording_id, disconnect_reason, gui_protocol, x11_display_port, vnc_port, gui_session_started_at, gui_session_ended_at, created_at, updated_at
 		FROM gate_sessions
 		WHERE device_id = $1
 		ORDER BY created_at DESC
@@ -286,7 +297,10 @@ func (s *SessionService) ListSessionsByDevice(ctx context.Context, deviceID stri
 			&session.ID, &session.UserID, &session.DeviceID, &session.State,
 			&session.CertSerial, &session.CertExpiresAt, &session.StartedAt,
 			&session.ConnectedAt, &session.DisconnectedAt, &session.SSHPort,
-			&session.RecordingID, &session.DisconnectReason, &session.CreatedAt, &session.UpdatedAt,
+			&session.RecordingID, &session.DisconnectReason,
+			&session.GUIProtocol, &session.X11DisplayPort, &session.VNCPort,
+			&session.GUISessionStartedAt, &session.GUISessionEndedAt,
+			&session.CreatedAt, &session.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan session row: %w", err)
@@ -307,7 +321,7 @@ func (s *SessionService) ListActiveSessions(ctx context.Context, deviceID string
 	defer s.mu.RUnlock()
 
 	query := `
-		SELECT id, user_id, device_id, state, cert_serial, cert_expires_at, started_at, connected_at, disconnected_at, ssh_port, recording_id, disconnect_reason, created_at, updated_at
+		SELECT id, user_id, device_id, state, cert_serial, cert_expires_at, started_at, connected_at, disconnected_at, ssh_port, recording_id, disconnect_reason, gui_protocol, x11_display_port, vnc_port, gui_session_started_at, gui_session_ended_at, created_at, updated_at
 		FROM gate_sessions
 		WHERE device_id = $1 AND state = $2
 		ORDER BY created_at DESC
@@ -326,7 +340,10 @@ func (s *SessionService) ListActiveSessions(ctx context.Context, deviceID string
 			&session.ID, &session.UserID, &session.DeviceID, &session.State,
 			&session.CertSerial, &session.CertExpiresAt, &session.StartedAt,
 			&session.ConnectedAt, &session.DisconnectedAt, &session.SSHPort,
-			&session.RecordingID, &session.DisconnectReason, &session.CreatedAt, &session.UpdatedAt,
+			&session.RecordingID, &session.DisconnectReason,
+			&session.GUIProtocol, &session.X11DisplayPort, &session.VNCPort,
+			&session.GUISessionStartedAt, &session.GUISessionEndedAt,
+			&session.CreatedAt, &session.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan active session row: %w", err)
@@ -347,7 +364,7 @@ func (s *SessionService) ListSessionsByUser(ctx context.Context, userID string) 
 	defer s.mu.RUnlock()
 
 	query := `
-		SELECT id, user_id, device_id, state, cert_serial, cert_expires_at, started_at, connected_at, disconnected_at, ssh_port, recording_id, disconnect_reason, created_at, updated_at
+		SELECT id, user_id, device_id, state, cert_serial, cert_expires_at, started_at, connected_at, disconnected_at, ssh_port, recording_id, disconnect_reason, gui_protocol, x11_display_port, vnc_port, gui_session_started_at, gui_session_ended_at, created_at, updated_at
 		FROM gate_sessions
 		WHERE user_id = $1
 		ORDER BY created_at DESC
@@ -366,8 +383,10 @@ func (s *SessionService) ListSessionsByUser(ctx context.Context, userID string) 
 			&session.ID, &session.UserID, &session.DeviceID, &session.State,
 			&session.CertSerial, &session.CertExpiresAt, &session.StartedAt,
 			&session.ConnectedAt, &session.DisconnectedAt, &session.SSHPort,
-			&session.RecordingID, &session.DisconnectReason, &session.CreatedAt,
-			&session.UpdatedAt,
+			&session.RecordingID, &session.DisconnectReason,
+			&session.GUIProtocol, &session.X11DisplayPort, &session.VNCPort,
+			&session.GUISessionStartedAt, &session.GUISessionEndedAt,
+			&session.CreatedAt, &session.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan session: %w", err)
@@ -408,6 +427,54 @@ func (s *SessionService) CleanupExpiredSessions(ctx context.Context) error {
 
 	if err != nil {
 		return fmt.Errorf("failed to cleanup expired sessions: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateSessionGUIStatus updates the session with GUI protocol and port information.
+// Called by daemon when VNC/X11 server starts.
+func (s *SessionService) UpdateSessionGUIStatus(ctx context.Context,
+	sessionID, protocol string, vncPort, x11DisplayPort int) error {
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	query := `
+		UPDATE gate_sessions
+		SET gui_protocol = $1,
+		    vnc_port = $2,
+		    x11_display_port = $3,
+		    gui_session_started_at = NOW()
+		WHERE id = $4
+	`
+
+	_, err := s.db.ExecContext(ctx, query, protocol, vncPort, x11DisplayPort, sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to update GUI status: %w", err)
+	}
+
+	return nil
+}
+
+// EndGUISession clears GUI session data and records end time.
+// Called when user disconnects VNC/X11.
+func (s *SessionService) EndGUISession(ctx context.Context, sessionID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	query := `
+		UPDATE gate_sessions
+		SET gui_protocol = NULL,
+		    vnc_port = NULL,
+		    x11_display_port = NULL,
+		    gui_session_ended_at = NOW()
+		WHERE id = $1
+	`
+
+	_, err := s.db.ExecContext(ctx, query, sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to end GUI session: %w", err)
 	}
 
 	return nil
