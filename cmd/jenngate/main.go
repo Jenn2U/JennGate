@@ -6,8 +6,10 @@ import (
 
 	"github.com/Jenn2U/JennGate/internal/config"
 	"github.com/Jenn2U/JennGate/internal/db"
+	"github.com/Jenn2U/JennGate/internal/handlers"
 	"github.com/Jenn2U/JennGate/internal/migrations"
 	"github.com/Jenn2U/JennGate/internal/services"
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
@@ -50,7 +52,12 @@ func main() {
 	sessionSvc := services.NewSessionService(database)
 	log.Printf("Session service initialized successfully (db: %v)", sessionSvc != nil)
 
-	// TODO: Initialize recordings service
+	// Initialize recording service
+	recordingSvc, err := services.NewRecordingService(database, cfg.RecordingDir)
+	if err != nil {
+		log.Fatal("Failed to initialize recording service:", err)
+	}
+	log.Println("Recording service initialized successfully")
 
 	// Verify CA public key is available
 	pubKey := caService.GetPublicKey()
@@ -58,4 +65,16 @@ func main() {
 		log.Fatal("CA public key is not available")
 	}
 	log.Printf("CA service ready with public key (%d bytes)", len(pubKey))
+
+	// Initialize HTTP handlers and router
+	h := handlers.NewHandlers(caService, sessionSvc, recordingSvc, database)
+	router := gin.Default()
+	h.RegisterRoutes(router)
+
+	// Start HTTP server
+	addr := fmt.Sprintf(":%d", cfg.HTTPPort)
+	log.Printf("Starting JennGate on %s", addr)
+	if err := router.Run(addr); err != nil {
+		log.Fatal("Failed to start server:", err)
+	}
 }

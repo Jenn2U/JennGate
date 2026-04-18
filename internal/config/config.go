@@ -8,26 +8,28 @@ import (
 
 // Config holds the application configuration.
 type Config struct {
-	DBHost     string
-	DBPort     int
-	DBName     string
-	DBUser     string
-	DBPassword string
-	SSLMode    string
-	HTTPPort   int
-	LogLevel   string
+	DBHost       string
+	DBPort       int
+	DBName       string
+	DBUser       string
+	DBPassword   string
+	SSLMode      string
+	HTTPPort     int
+	LogLevel     string
+	RecordingDir string
 }
 
 // Load reads environment variables with prefix JENNGATE_ and returns a Config.
 // JENNGATE_DB_PASSWORD is required; all others have sensible defaults.
 func Load() (*Config, error) {
 	cfg := &Config{
-		DBHost:   getEnvOrDefault("JENNGATE_DB_HOST", "localhost"),
-		DBName:   getEnvOrDefault("JENNGATE_DB_NAME", "jenngate"),
-		DBUser:   getEnvOrDefault("JENNGATE_DB_USER", "jenngate"),
-		SSLMode:  getEnvOrDefault("JENNGATE_DB_SSLMODE", "require"),
-		HTTPPort: 8081,
-		LogLevel: getEnvOrDefault("JENNGATE_LOG_LEVEL", "info"),
+		DBHost:       getEnvOrDefault("JENNGATE_DB_HOST", "localhost"),
+		DBName:       getEnvOrDefault("JENNGATE_DB_NAME", "jenngate"),
+		DBUser:       getEnvOrDefault("JENNGATE_DB_USER", "jenngate"),
+		SSLMode:      getEnvOrDefault("JENNGATE_DB_SSLMODE", "require"),
+		HTTPPort:     8081,
+		LogLevel:     getEnvOrDefault("JENNGATE_LOG_LEVEL", "info"),
+		RecordingDir: getEnvOrDefault("JENNGATE_RECORDING_DIR", "/var/lib/jenngate/recordings"),
 	}
 
 	// DBPort with validation
@@ -73,7 +75,7 @@ func getEnvOrDefault(key, defaultValue string) string {
 // String returns a readable summary of the Config with the password masked.
 func (c *Config) String() string {
 	return fmt.Sprintf(
-		"Config{DBHost:%s DBPort:%d DBName:%s DBUser:%s SSLMode:%s DBPassword:*** HTTPPort:%d LogLevel:%s}",
+		"Config{DBHost:%s DBPort:%d DBName:%s DBUser:%s SSLMode:%s DBPassword:*** HTTPPort:%d LogLevel:%s RecordingDir:%s}",
 		c.DBHost,
 		c.DBPort,
 		c.DBName,
@@ -81,5 +83,6 @@ func (c *Config) String() string {
 		c.SSLMode,
 		c.HTTPPort,
 		c.LogLevel,
+		c.RecordingDir,
 	)
 }
