@@ -1,0 +1,364 @@
+---
+# JennGate Prometheus Alert Rules
+# Production monitoring for Phase 4 deployment
+# Generated: 2026-04-19
+
+groups:
+  - name: jenngate_alerts
+    interval: 30s
+    rules:
+      # 1. Certificate Issuance Performance
+      - alert: JennGateCertIssuanceLatencyHigh
+        expr: |
+          histogram_quantile(0.99, rate(jenngate_cert_issuance_duration_seconds_bucket[5m])) > 0.25
+        for: 5m
+        labels:
+          severity: critical
+          component: certificate
+          runbook: "docs/RUNBOOKS.md#certissuancelatency"
+        annotations:
+          summary: "JennGate certificate issuance latency high (P99 > 250ms)"
+          description: |
+            Certificate issuance P99 latency is {{ $value | humanizeDuration }} (threshold: 250ms).
+            Baseline from load test: 78.901ms (avg: 42.156ms)
+            This indicates possible CA service degradation or database contention.
+            Check: CPU usage, DB connection pool, OpenSSL performance.
+
+      - alert: JennGateCertIssuanceLatencyWarn
+        expr: |
+          histogram_quantile(0.50, rate(jenngate_cert_issuance_duration_seconds_bucket[5m])) > 0.15
+        for: 10m
+        labels:
+          severity: warning
+          component: certificate
+        annotations:
+          summary: "JennGate certificate issuance latency elevated (avg > 150ms)"
+          description: |
+            Certificate issuance median latency is {{ $value | humanizeDuration }} (threshold: 150ms).
+            Baseline from load test: 42.156ms
+            This may indicate early signs of performance degradation.
+
+      # 2. Policy Sync Performance
+      - alert: JennGatePolicySyncLatencyHigh
+        expr: |
+          histogram_quantile(0.99, rate(jenngate_policy_sync_duration_seconds_bucket[5m])) > 10
+        for: 5m
+        labels:
+          severity: critical
+          component: policy
+          runbook: "docs/RUNBOOKS.md#policysynclatency"
+        annotations:
+          summary: "JennGate policy sync latency high (P99 > 10s)"
+          description: |
+            Policy sync P99 latency is {{ $value | humanizeDuration }} (threshold: 10s).
+            Baseline from load test: 45.123ms (avg: 8.765ms)
+            This indicates possible database lock contention or Jenn connectivity issues.
+            Check: Database locks, network connectivity to Jenn, policy batch size.
+
+      - alert: JennGatePolicySyncErrorRateHigh
+        expr: |
+          rate(jenngate_policy_sync_errors_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          component: policy
+          runbook: "docs/RUNBOOKS.md#policysyncerrors"
+        annotations:
+          summary: "JennGate policy sync error rate high (> 1%)"
+          description: |
+            Policy sync error rate is {{ $value | humanizePercentage }} (threshold: 1%).
+            This indicates failures in policy delivery from Jenn to JennGate.
+            Check: Jenn connectivity, mTLS certificate validity, policy validation.
+
+      # 3. WebSocket Terminal Sessions
+      - alert: JennGateWebSocketLatencyHigh
+        expr: |
+          histogram_quantile(0.99, rate(jenngate_websocket_session_duration_seconds_bucket[5m])) > 0.25
+        for: 5m
+        labels:
+          severity: warning
+          component: websocket
+          runbook: "docs/RUNBOOKS.md#websocketlatency"
+        annotations:
+          summary: "JennGate WebSocket terminal latency high (P99 > 250ms)"
+          description: |
+            WebSocket command latency P99 is {{ $value | humanizeDuration }} (threshold: 250ms).
+            Baseline from load test: 15.234ms (avg: 3.456ms)
+            This indicates possible network congestion or daemon latency.
+            Check: Network bandwidth, daemon SSH response time, OS socket buffers.
+
+      - alert: JennGateWebSocketConnectionCountHigh
+        expr: |
+          jenngate_websocket_connections_active > 1000
+        for: 5m
+        labels:
+          severity: warning
+          component: websocket
+        annotations:
+          summary: "JennGate active WebSocket connections high (> 1000)"
+          description: |
+            Active WebSocket connections: {{ $value | humanize }}.
+            This may indicate resource exhaustion or connection leaks.
+            Check: Memory usage, connection timeout settings, client reconnect logic.
+
+      # 4. Session Lifecycle
+      - alert: JennGateSessionCreationFailures
+        expr: |
+          rate(jenngate_session_state_transitions_total{source="REQUESTED", target="FAILED"}[5m]) * 300 > 5
+        for: 5m
+        labels:
+          severity: critical
+          component: sessions
+          runbook: "docs/RUNBOOKS.md#sessioncreationfailures"
+        annotations:
+          summary: "JennGate session creation failures (5+ in 5m)"
+          description: |
+            Session creation failures in last 5min: {{ $value | humanize }}.
+            This indicates certificate issuance or policy authorization failures.
+            Check: Certificate service, policy database, device approval status.
+
+      - alert: JennGateSessionDurationAnomaly
+        expr: |
+          histogram_quantile(0.95, rate(jenngate_session_duration_seconds_bucket[5m])) > 86400
+        for: 10m
+        labels:
+          severity: warning
+          component: sessions
+        annotations:
+          summary: "JennGate sessions exceeding 24h duration"
+          description: |
+            P95 session duration is {{ $value | humanizeDuration }}.
+            This may indicate stuck sessions or missing termination logic.
+            Check: Session cleanup, session timeout settings, daemon disconnection handling.
+
+      # 5. Device Management
+      - alert: JennGateDevicesPendingApprovalStuck
+        expr: |
+          jenngate_devices_pending_approval > 10
+        for: 1h
+        labels:
+          severity: warning
+          component: devices
+          runbook: "docs/RUNBOOKS.md#pendingdevices"
+        annotations:
+          summary: "JennGate devices stuck in pending approval (> 10 for 1h)"
+          description: |
+            Devices pending approval: {{ $value | humanize }}.
+            Baseline from load test: all devices approved in test window.
+            This indicates backlog in device approval workflow.
+            Check: Admin dashboard availability, notification delivery, approver availability.
+
+      - alert: JennGateDeviceRegistrationFailure
+        expr: |
+          rate(jenngate_devices_registered_total[5m]) == 0 and rate(jenngate_daemon_connections_total[5m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+          component: devices
+        annotations:
+          summary: "JennGate device registration stalled despite daemon connections"
+          description: |
+            Daemons are connecting but device registration is not progressing.
+            Check: Device approval workflow, policy sync status, database write issues.
+
+      # 6. Recording & Storage
+      - alert: JennGateRecordingUploadSlow
+        expr: |
+          histogram_quantile(0.95, rate(jenngate_recording_upload_duration_seconds_bucket[5m])) > 300
+        for: 10m
+        labels:
+          severity: warning
+          component: recording
+        annotations:
+          summary: "JennGate recording upload P95 latency high (> 5min)"
+          description: |
+            Recording upload latency P95: {{ $value | humanizeDuration }}.
+            This indicates NAS latency or network bandwidth issues.
+            Check: NAS disk I/O, network throughput, recording file sizes.
+
+      - alert: JennGateStorageQuotaHigh
+        expr: |
+          jenngate_storage_used_gb / jenngate_storage_total_gb > 0.8
+        for: 5m
+        labels:
+          severity: critical
+          component: storage
+          runbook: "docs/RUNBOOKS.md#storagequota"
+        annotations:
+          summary: "JennGate NAS storage usage high (> 80%)"
+          description: |
+            Storage utilization: {{ $value | humanizePercentage }}.
+            NAS may run out of space. Immediate action required.
+            Actions: Archive old recordings, expand NAS, cleanup policy logs.
+
+      - alert: JennGateStorageQuotaCritical
+        expr: |
+          jenngate_storage_used_gb / jenngate_storage_total_gb > 0.95
+        for: 1m
+        labels:
+          severity: critical
+          component: storage
+          runbook: "docs/RUNBOOKS.md#storagecritical"
+        annotations:
+          summary: "JennGate NAS storage critically full (> 95%)"
+          description: |
+            Storage utilization: {{ $value | humanizePercentage }}.
+            Recording uploads may fail. Immediate emergency action required.
+            Actions: Stop new recordings, emergency archive, emergency NAS expansion.
+
+      # 7. Daemon Connectivity
+      - alert: JennGateDaemonOffline
+        expr: |
+          jenngate_daemon_last_heartbeat_seconds_ago > 300
+        for: 1m
+        labels:
+          severity: critical
+          component: daemon
+          runbook: "docs/RUNBOOKS.md#daemonoffline"
+        annotations:
+          summary: "JennGate daemon offline (no heartbeat > 5min)"
+          description: |
+            Daemon {{ $labels.daemon_id }} last heartbeat: {{ $value | humanizeDuration }} ago.
+            Daemon may be unreachable or crashed.
+            Actions: SSH to daemon, check process status, restart daemon if needed.
+
+      - alert: JennGateDaemonHeartbeatWarn
+        expr: |
+          jenngate_daemon_last_heartbeat_seconds_ago > 120
+        for: 5m
+        labels:
+          severity: warning
+          component: daemon
+        annotations:
+          summary: "JennGate daemon heartbeat delayed (> 2min)"
+          description: |
+            Daemon {{ $labels.daemon_id }} last heartbeat: {{ $value | humanizeDuration }} ago.
+            Network latency or daemon slowness detected.
+            Check: Network connectivity, daemon CPU/memory usage.
+
+      # 8. gRPC Service Health
+      - alert: JennGategRPCErrorRateHigh
+        expr: |
+          rate(grpc_server_handled_total{grpc_service="JennGateAPI", grpc_code!="OK"}[5m])
+          /
+          rate(grpc_server_handled_total{grpc_service="JennGateAPI"}[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          component: grpc
+          runbook: "docs/RUNBOOKS.md#grpcerrorrrate"
+        annotations:
+          summary: "JennGate gRPC error rate high (> 1%)"
+          description: |
+            gRPC error rate is {{ $value | humanizePercentage }}.
+            RPC method: {{ $labels.grpc_method }} (code: {{ $labels.grpc_code }}).
+            This indicates service-level failures.
+            Check: Application logs, database connectivity, policy validation.
+
+      - alert: JennGategRPCLatencyHigh
+        expr: |
+          histogram_quantile(0.99, rate(grpc_server_handling_seconds_bucket{grpc_service="JennGateAPI"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: grpc
+        annotations:
+          summary: "JennGate gRPC latency high (P99 > 1s)"
+          description: |
+            gRPC P99 latency is {{ $value | humanizeDuration }}.
+            RPC method: {{ $labels.grpc_method }}.
+            This may impact client performance.
+            Check: Database query performance, network latency, service load.
+
+      # 9. Service Availability
+      - alert: JennGateHealthCheckFailing
+        expr: |
+          up{job="jenngate"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: service
+          runbook: "docs/RUNBOOKS.md#servicehealthcheck"
+        annotations:
+          summary: "JennGate service health check failing"
+          description: |
+            JennGate at {{ $labels.instance }} is not responding to health checks.
+            Service may be down or unreachable.
+            Actions: Check service status, network connectivity, logs.
+
+      - alert: JennGateRestartFrequent
+        expr: |
+          rate(process_start_time_seconds{job="jenngate"}[1h]) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: service
+        annotations:
+          summary: "JennGate restarting frequently (> 30min intervals)"
+          description: |
+            JennGate restart rate: {{ $value | humanize }} restarts/hour.
+            This indicates crashes or unstable conditions.
+            Check: Application error logs, resource exhaustion, configuration issues.
+
+      # 10. Cluster/High-Availability (if applicable)
+      - alert: JennGateClusterMemberDown
+        expr: |
+          up{job="jenngate-cluster"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          component: cluster
+        annotations:
+          summary: "JennGate cluster member offline"
+          description: |
+            Cluster member {{ $labels.instance }} is offline.
+            Cluster health may be degraded.
+            Check: Member logs, network connectivity, resource constraints.
+
+  # Recording rules for frequently-used metrics (for dashboard performance)
+  - name: jenngate_recording_rules
+    interval: 30s
+    rules:
+      - record: jenngate:cert_issuance:rate1m
+        expr: rate(jenngate_cert_issuance_duration_seconds_count[1m])
+
+      - record: jenngate:cert_issuance:latency:p50
+        expr: histogram_quantile(0.50, rate(jenngate_cert_issuance_duration_seconds_bucket[5m]))
+
+      - record: jenngate:cert_issuance:latency:p99
+        expr: histogram_quantile(0.99, rate(jenngate_cert_issuance_duration_seconds_bucket[5m]))
+
+      - record: jenngate:policy_sync:rate1m
+        expr: rate(jenngate_policy_sync_duration_seconds_count[1m])
+
+      - record: jenngate:policy_sync:latency:p50
+        expr: histogram_quantile(0.50, rate(jenngate_policy_sync_duration_seconds_bucket[5m]))
+
+      - record: jenngate:policy_sync:latency:p99
+        expr: histogram_quantile(0.99, rate(jenngate_policy_sync_duration_seconds_bucket[5m]))
+
+      - record: jenngate:policy_sync:error:rate1m
+        expr: rate(jenngate_policy_sync_errors_total[1m])
+
+      - record: jenngate:websocket:connections:active
+        expr: jenngate_websocket_connections_active
+
+      - record: jenngate:session:creation:failures:rate5m
+        expr: rate(jenngate_session_state_transitions_total{target="FAILED"}[5m])
+
+      - record: jenngate:storage:utilization:percent
+        expr: (jenngate_storage_used_gb / jenngate_storage_total_gb) * 100
+
+      - record: jenngate:daemon:online:count
+        expr: count(jenngate_daemon_last_heartbeat_seconds_ago < 300)
+
+      - record: jenngate:daemon:offline:count
+        expr: count(jenngate_daemon_last_heartbeat_seconds_ago > 300)
+
+      - record: jenngate:grpc:error:rate:percent
+        expr: |
+          (
+            rate(grpc_server_handled_total{grpc_code!="OK"}[5m])
+            /
+            rate(grpc_server_handled_total[5m])
+          ) * 100
