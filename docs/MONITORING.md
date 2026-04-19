@@ -196,13 +196,18 @@ Description: File size (bytes) of session recordings
 Trend metric; useful for capacity planning
 ```
 
+### Storage Metrics
+
 ```
 Metric: jenngate_storage_used_gb
 Type: Gauge
 Labels: mount_point
 Description: Current NAS storage usage (GB)
+Baseline: Varies per environment (tracks mount_point)
+Units: Gigabytes (GB)
 Alert: Warn if (used / total) > 80% for 5min
 Alert: Critical if (used / total) > 95% for 1min
+Dashboard Panel: Panel 6 (NAS Storage Utilization)
 ```
 
 ```
@@ -210,6 +215,9 @@ Metric: jenngate_storage_total_gb
 Type: Gauge
 Labels: mount_point
 Description: Total NAS storage capacity (GB)
+Baseline: Configured per deployment (e.g., 1000 GB, 5000 GB)
+Units: Gigabytes (GB)
+Used in ratio: (storage_used_gb / storage_total_gb) * 100 = %
 ```
 
 ### Daemon Connectivity Metrics

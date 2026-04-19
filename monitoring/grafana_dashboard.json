@@ -89,7 +89,8 @@
         {
           "expr": "max(rate(jenngate_cert_issuance_duration_seconds_bucket[5m])) * 1000",
           "refId": "MAX",
-          "legendFormat": "Max"
+          "legendFormat": "Max",
+          "comment": "Rate-derived MAX shows sustained high latency trend (max of rate buckets)"
         },
         {
           "expr": "min(rate(jenngate_cert_issuance_duration_seconds_bucket[5m])) * 1000",
@@ -427,7 +428,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "red",
+                "color": "green",
                 "value": null
               },
               {
@@ -435,7 +436,7 @@
                 "value": 0.1
               },
               {
-                "color": "green",
+                "color": "red",
                 "value": 1
               }
             ]

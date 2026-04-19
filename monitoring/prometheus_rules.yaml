@@ -104,6 +104,7 @@ groups:
       # 4. Session Lifecycle
       - alert: JennGateSessionCreationFailures
         expr: |
+          # Rate (failures/sec) * 300s window = total count; alert if > 5 failures in 5min
           rate(jenngate_session_state_transitions_total{source="REQUESTED", target="FAILED"}[5m]) * 300 > 5
         for: 5m
         labels:
@@ -246,7 +247,7 @@ groups:
         labels:
           severity: critical
           component: grpc
-          runbook: "docs/RUNBOOKS.md#grpcerrorrrate"
+          runbook: "docs/RUNBOOKS.md#grpcerrorrate"
         annotations:
           summary: "JennGate gRPC error rate high (> 1%)"
           description: |
