@@ -217,6 +217,7 @@ func TestPhase4_Load_02_PolicySync(t *testing.T) {
 				start := time.Now()
 
 				// Policy sync operation
+				// Note: CreateTestPolicy error is not checked here because the fixture panics on error
 				runner.Setup.CreateTestPolicy(t, userID, deviceID, []string{"gate.connect", "gate.gui.access"})
 
 				latency := time.Since(start)
@@ -363,7 +364,7 @@ func TestPhase4_Load_03_WebSocketTerminal(t *testing.T) {
 	minSetup, avgSetup, maxSetup, _ := calculateMetrics(setupTimes)
 
 	totalOps := len(latencies)
-	failureRate := float64(failureCount) / float64(totalOps+numGoroutines) * 100
+	failureRate := float64(failureCount) / float64(totalOps) * 100
 
 	metrics := LoadTestMetrics{
 		Name:         "WebSocket Terminal (10 concurrent users, 200 commands total)",
@@ -385,11 +386,12 @@ func TestPhase4_Load_03_WebSocketTerminal(t *testing.T) {
 	fmt.Printf("  Max Setup:  %v\n", maxSetup)
 
 	// Assertions: WebSocket latency targets
+	successRate := 100.0 - failureRate
 	require.Greater(t, successCount, 0, "should have successful commands")
 	require.Less(t, avgLat, 100*time.Millisecond, "avg latency should be < 100ms")
 	require.Less(t, p99Lat, 150*time.Millisecond, "p99 latency should be < 150ms")
 	require.Less(t, avgSetup, 2*time.Second, "avg setup time should be < 2s")
-	require.Greater(t, 100.0-failureRate, 99.0, "success rate should be > 99%")
+	require.Greater(t, successRate, 99.0, "success rate should be > 99%")
 }
 
 // printLoadMetrics formats and prints load test metrics.
