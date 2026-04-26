@@ -19,8 +19,9 @@ func setupHandlers(t *testing.T) *Handlers {
 	caService := &services.CAService{}
 	sessionService := &services.SessionService{}
 	recordingService := &services.RecordingService{}
+	policyService := services.NewPolicyService()
 
-	return NewHandlers(caService, sessionService, recordingService, nil)
+	return NewHandlers(caService, sessionService, recordingService, policyService, nil)
 }
 
 // setupTestRouter creates a router with user_id middleware for testing

@@ -60,6 +60,10 @@ func main() {
 	}
 	log.Println("Recording service initialized successfully")
 
+	// Initialize policy service
+	policySvc := services.NewPolicyService()
+	log.Println("Policy service initialized successfully")
+
 	// Verify CA public key is available
 	pubKey := caService.GetPublicKey()
 	if len(pubKey) == 0 {
@@ -68,7 +72,7 @@ func main() {
 	log.Printf("CA service ready with public key (%d bytes)", len(pubKey))
 
 	// Initialize HTTP handlers and router
-	h := handlers.NewHandlers(caService, sessionSvc, recordingSvc, database)
+	h := handlers.NewHandlers(caService, sessionSvc, recordingSvc, policySvc, database)
 	router := gin.Default()
 	h.RegisterRoutes(router)
 

@@ -16,6 +16,7 @@ type Handlers struct {
 	caService        *services.CAService
 	sessionService   *services.SessionService
 	recordingService *services.RecordingService
+	policyService    *services.PolicyService
 	db               *sql.DB
 }
 
@@ -24,12 +25,14 @@ func NewHandlers(
 	caService *services.CAService,
 	sessionService *services.SessionService,
 	recordingService *services.RecordingService,
+	policyService *services.PolicyService,
 	db *sql.DB,
 ) *Handlers {
 	return &Handlers{
 		caService:        caService,
 		sessionService:   sessionService,
 		recordingService: recordingService,
+		policyService:    policyService,
 		db:               db,
 	}
 }
@@ -60,6 +63,12 @@ func (h *Handlers) RegisterRoutes(router *gin.Engine) {
 		admin.GET("/pending-devices", h.ListPendingDevices)
 		admin.POST("/devices/:device_id/approve", h.ApproveDevice)
 		admin.POST("/devices/:device_id/decommission", h.DecommissionDevice)
+	}
+
+	// Policy management (admin)
+	policies := router.Group("/api/v1/policies")
+	{
+		policies.POST("/sync", h.SyncAccessPolicies)
 	}
 
 	// Daemon endpoints (internal)
@@ -485,5 +494,58 @@ func (h *Handlers) ReportSessionEnd(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"status": "acknowledged",
+	})
+}
+
+// ============================================================================
+// Policy Management
+// ============================================================================
+
+// SyncAccessPolicies syncs access policies from Jenn to JennGate.
+// POST /api/v1/policies/sync
+func (h *Handlers) SyncAccessPolicies(c *gin.Context) {
+	var req struct {
+		Policies []struct {
+			PrincipalType string   `json:"principal_type"`
+			PrincipalId   string   `json:"principal_id"`
+			TargetType    string   `json:"target_type"`
+			TargetId      string   `json:"target_id"`
+			Permissions   []string `json:"permissions"`
+		} `json:"policies"`
+	}
+
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "invalid request body",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	// Convert request to PolicyService AccessPolicy objects
+	policies := make([]*services.AccessPolicy, len(req.Policies))
+	for i, p := range req.Policies {
+		policies[i] = &services.AccessPolicy{
+			PrincipalType: p.PrincipalType,
+			PrincipalId:   p.PrincipalId,
+			TargetType:    p.TargetType,
+			TargetId:      p.TargetId,
+			Permissions:   p.Permissions,
+		}
+	}
+
+	// Sync policies
+	syncedCount, err := h.policyService.SyncPolicies(policies)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "failed to sync policies",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":      true,
+		"synced_count": syncedCount,
 	})
 }

@@ -56,3 +56,33 @@ func (ps *PolicyService) SetPolicy(userID, deviceID string, permissions []string
 		Permissions: permissions,
 	}
 }
+
+// SyncPolicies syncs access policies from a list of AccessPolicy objects.
+// Returns the number of policies synced and any error encountered.
+func (ps *PolicyService) SyncPolicies(policies []*AccessPolicy) (int, error) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	count := 0
+	for _, policy := range policies {
+		// For now, we handle user-device policies. Expand as needed.
+		if policy.PrincipalType == "user" && policy.TargetType == "device" {
+			key := fmt.Sprintf("%s:%s", policy.PrincipalId, policy.TargetId)
+			ps.cache[key] = &Policy{
+				Permissions: policy.Permissions,
+			}
+			count++
+		}
+	}
+
+	return count, nil
+}
+
+// AccessPolicy represents a single access policy for syncing.
+type AccessPolicy struct {
+	PrincipalType string
+	PrincipalId   string
+	TargetType    string
+	TargetId      string
+	Permissions   []string
+}
