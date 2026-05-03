@@ -68,7 +68,10 @@ jobs:
           # test packages (tests/unit, tests/integration, tests/) back to the
           # internal/* code under test. Without this, coverage-by-default only
           # counts each package's own _test.go files.
-          go test ./... -v -coverprofile=coverage.out -covermode=atomic -coverpkg=./internal/...,./cmd/...
+          # -p 1 serializes package execution so the shared Postgres test DB
+          # isn't trampled by parallel migrations across packages
+          # (tests/unit and tests/integration both connect to jenngate_test).
+          go test ./... -v -p 1 -coverprofile=coverage.out -covermode=atomic -coverpkg=./internal/...,./cmd/...
 
       - name: Generate coverage report
         run: |
