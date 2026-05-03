@@ -1,0 +1,99 @@
+name: Check Tests & Coverage
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: jenngate
+          POSTGRES_PASSWORD: jenngate
+          POSTGRES_DB: jenngate_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Wait for PostgreSQL to be ready
+        env:
+          PGPASSWORD: jenngate
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -U jenngate -d jenngate_test; then
+              echo "PostgreSQL is ready"
+              exit 0
+            fi
+            echo "Waiting for PostgreSQL... ($i/30)"
+            sleep 1
+          done
+          echo "PostgreSQL failed to start"
+          exit 1
+
+      - name: Run tests with coverage
+        env:
+          # Tests in tests/unit/db_test.go and tests/integration use this connection string directly.
+          # Mirrors the dev convention documented in docs/DEPLOYMENT.md.
+          JENNGATE_DB_PASSWORD: jenngate
+          JENNGATE_DB_USER: jenngate
+          JENNGATE_DB_NAME: jenngate_test
+          JENNGATE_DB_HOST: localhost
+          JENNGATE_DB_PORT: "5432"
+          JENNGATE_DB_SSLMODE: disable
+        run: |
+          # -coverpkg=./internal/...,./cmd/... attributes coverage from centralized
+          # test packages (tests/unit, tests/integration, tests/) back to the
+          # internal/* code under test. Without this, coverage-by-default only
+          # counts each package's own _test.go files.
+          go test ./... -v -coverprofile=coverage.out -covermode=atomic -coverpkg=./internal/...,./cmd/...
+
+      - name: Generate coverage report
+        run: |
+          go tool cover -func=coverage.out > coverage-report.txt
+          go tool cover -html=coverage.out -o coverage.html
+
+      - name: Check coverage threshold
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | tail -1 | awk '{print $NF}' | sed 's/%//')
+          echo "Total Coverage: ${COVERAGE}%"
+
+          if (( $(echo "$COVERAGE < 90" | bc -l) )); then
+            echo "Coverage ${COVERAGE}% is below 90% threshold"
+            exit 1
+          else
+            echo "Coverage ${COVERAGE}% meets 90% threshold"
+            exit 0
+          fi
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage.out
+            coverage-report.txt
+            coverage.html

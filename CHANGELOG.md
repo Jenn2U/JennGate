@@ -4,6 +4,18 @@ All notable changes to JennGate are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.1] - 2026-05-03
+
+### Added
+- **Restored CI workflows** (`.github/workflows/`) that were lost when main was force-pushed during repo creation on 2026-04-17:
+  - `check-tests.yml` — Go tests against PostgreSQL 15 service container with 90% coverage gate (mirrors JennAuth pattern)
+  - `build-jenngate.yml` — multi-arch Docker build, push to `ghcr.io/jenn2u/jenngate` on main + tag events (PR builds verify Dockerfile only)
+- Coverage attribution uses `-coverpkg=./internal/...,./cmd/...` so centralized tests in `tests/unit/` and `tests/integration/` credit coverage to the packages they exercise.
+
+### Notes
+- Coverage gate will initially fail (Phase 4 work has 12 test files but no prior coverage threshold). Closing the gap is tracked separately.
+- Phase 4 design doc references CI/CD-deployed GitHub Org Secrets — restoring the workflows unblocks that work stream.
+
 ## [3.1.0] - 2026-04-18
 
 ### Added
