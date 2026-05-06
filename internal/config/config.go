@@ -7,7 +7,7 @@ import (
 )
 
 // Version is the current version of JennGate (SemVer 2.0.0 format)
-const Version = "v3.1.0"
+const Version = "v3.1.1"
 
 // Config holds the application configuration.
 type Config struct {

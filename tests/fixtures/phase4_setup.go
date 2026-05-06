@@ -8,6 +8,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/google/uuid"
 
 	"github.com/Jenn2U/JennGate/internal/services"
 )
@@ -69,14 +70,20 @@ func (ps *Phase4Setup) Teardown(t *testing.T) {
 // Helper Functions for Phase 4 Test Setup
 // ============================================================================
 
-// CreateTestDevice creates a device in PENDING_APPROVAL state.
-// Returns the device ID on success.
-func (ps *Phase4Setup) CreateTestDevice(t *testing.T, deviceID, deviceType string) {
+// CreateTestDevice creates a device in PENDING_APPROVAL state with a proper UUID.
+// Accepts a device identifier string (for test reference) and generates a deterministic UUID.
+// This allows tests to refer to devices by name while using valid UUIDs in the database.
+func (ps *Phase4Setup) CreateTestDevice(t *testing.T, deviceID, deviceType string) string {
 	t.Helper()
 
+	// Generate a deterministic UUID v5 from the device identifier
+	// This ensures the same deviceID always produces the same UUID
+	namespace := uuid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8") // UUID v5 namespace
+	deviceUUID := uuid.NewSHA1(namespace, []byte(deviceID)).String()
+
 	query := `
-		INSERT INTO devices (id, device_name, device_type, state, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO devices (id, device_name, device_type, state, public_key_pem, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (id) DO NOTHING
 	`
 
@@ -84,16 +91,27 @@ func (ps *Phase4Setup) CreateTestDevice(t *testing.T, deviceID, deviceType strin
 	_, err := ps.DB.ExecContext(
 		ps.TestContext,
 		query,
-		deviceID, deviceID+"-name", deviceType, "PENDING_APPROVAL", now, now,
+		deviceUUID, deviceID+"-name", deviceType, "PENDING_APPROVAL", "ssh-rsa AAAAB3...", now, now,
 	)
 	if err != nil {
 		t.Fatalf("failed to create test device: %v", err)
 	}
+
+	return deviceUUID
 }
 
 // ApproveTestDevice transitions a device from PENDING_APPROVAL to APPROVED.
-func (ps *Phase4Setup) ApproveTestDevice(t *testing.T, deviceID, adminUserID string) {
+// Accepts either a device identifier string (will be converted to UUID) or a UUID directly.
+func (ps *Phase4Setup) ApproveTestDevice(t *testing.T, deviceRef, adminUserID string) {
 	t.Helper()
+
+	// Convert device identifier to UUID if needed
+	deviceUUID := deviceRef
+	if _, err := uuid.Parse(deviceRef); err != nil {
+		// deviceRef is not a UUID, generate one from the identifier
+		namespace := uuid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+		deviceUUID = uuid.NewSHA1(namespace, []byte(deviceRef)).String()
+	}
 
 	query := `
 		UPDATE devices
@@ -105,7 +123,7 @@ func (ps *Phase4Setup) ApproveTestDevice(t *testing.T, deviceID, adminUserID str
 	result, err := ps.DB.ExecContext(
 		ps.TestContext,
 		query,
-		"APPROVED", adminUserID, now, now, deviceID,
+		"APPROVED", adminUserID, now, now, deviceUUID,
 	)
 	if err != nil {
 		t.Fatalf("failed to approve device: %v", err)
@@ -116,7 +134,7 @@ func (ps *Phase4Setup) ApproveTestDevice(t *testing.T, deviceID, adminUserID str
 		t.Fatalf("failed to get rows affected: %v", err)
 	}
 	if rows == 0 {
-		t.Fatalf("device not found: %s", deviceID)
+		t.Fatalf("device not found: %s", deviceRef)
 	}
 }
 
@@ -133,14 +151,23 @@ func (ps *Phase4Setup) CreateTestPolicy(
 }
 
 // CreateTestSession creates a session in REQUESTED state.
+// Accepts either a UUID or device identifier string (will be converted to UUID).
 // Returns the session object.
 func (ps *Phase4Setup) CreateTestSession(
 	t *testing.T,
 	userID string,
-	deviceID string,
+	deviceRef string,
 	certSerial string,
 ) *services.Session {
 	t.Helper()
+
+	// Convert device identifier to UUID if needed
+	deviceID := deviceRef
+	if _, err := uuid.Parse(deviceRef); err != nil {
+		// deviceRef is not a UUID, generate one from the identifier
+		namespace := uuid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+		deviceID = uuid.NewSHA1(namespace, []byte(deviceRef)).String()
+	}
 
 	certExpiresAt := time.Now().Add(1 * time.Hour)
 	session, err := ps.SessionService.CreateSession(
@@ -208,10 +235,19 @@ func (ps *Phase4Setup) GetSession(t *testing.T, sessionID string) *services.Sess
 	return session
 }
 
-// GetDevice retrieves a device by ID.
+// GetDevice retrieves a device by ID or device identifier.
+// Accepts either a UUID or a device identifier string (will be converted to UUID).
 // Returns nil if device not found (use for existence checks).
-func (ps *Phase4Setup) GetDevice(t *testing.T, deviceID string) *Device {
+func (ps *Phase4Setup) GetDevice(t *testing.T, deviceRef string) *Device {
 	t.Helper()
+
+	// Convert device identifier to UUID if needed
+	deviceID := deviceRef
+	if _, err := uuid.Parse(deviceRef); err != nil {
+		// deviceRef is not a UUID, generate one from the identifier
+		namespace := uuid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+		deviceID = uuid.NewSHA1(namespace, []byte(deviceRef)).String()
+	}
 
 	query := `
 		SELECT id, device_name, device_type, state, approved_by, approved_at, created_at, updated_at

@@ -39,15 +39,35 @@ func runMigrations(t *testing.T, db *sql.DB) {
 	}
 
 	connStr := "postgresql://jenngate:jenngate@localhost:5432/jenngate_test?sslmode=disable"
+
+	// Reset schema to a known-clean state before applying migrations.
+	// This protects against three failure modes seen in CI:
+	//   1. Prior test packages (e.g. tests/integration) create tables directly
+	//      via raw SQL, leaving schema_migrations out of sync with the DB →
+	//      m.Up() fails with "relation already exists".
+	//   2. A failed migration run leaves schema_migrations.dirty = true →
+	//      m.Up() fails with "Dirty database version N. Fix and force version".
+	//   3. Repeated test runs against a persistent CI DB accumulate state.
+	// `DROP SCHEMA public CASCADE; CREATE SCHEMA public` is the postgres
+	// idiom for a full reset; it's cheaper than dropping/recreating the DB.
+	resetDB, err := sql.Open("postgres", connStr)
+	if err != nil {
+		t.Fatalf("failed to open db for reset: %v", err)
+	}
+	if _, err := resetDB.Exec("DROP SCHEMA public CASCADE; CREATE SCHEMA public;"); err != nil {
+		resetDB.Close()
+		t.Fatalf("failed to reset schema: %v", err)
+	}
+	resetDB.Close()
+
 	m, err := migrate.New("file://"+migrationPath, connStr)
 	if err != nil {
 		t.Fatalf("failed to initialize migrations: %v", err)
 	}
 	defer m.Close()
 
-	// Apply all pending migrations
-	err = m.Up()
-	if err != nil && err != migrate.ErrNoChange {
+	// Apply all migrations from a clean schema.
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		t.Fatalf("failed to run migrations: %v", err)
 	}
 }
